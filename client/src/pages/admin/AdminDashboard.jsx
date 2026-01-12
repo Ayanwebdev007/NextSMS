@@ -79,7 +79,7 @@ const AdminDashboard = () => {
                             </div>
                             <div className={`${kpi.bg} ${kpi.color} p-3 rounded-xl`}>
                                 {kpi.image ? (
-                                    <img src={kpi.image} alt="WA" className="w-6 h-6 object-contain" />
+                                    <img src={kpi.image} alt="WA" className="w-8 h-8 object-contain" />
                                 ) : (
                                     <kpi.icon size={24} />
                                 )}
