@@ -17,6 +17,7 @@ import {
   X,
   HelpCircle,
   Shield,
+  Braces,
 } from "lucide-react";
 
 // --- Context and Provider (No Changes) ---
@@ -176,6 +177,7 @@ const AppSidebarContent = () => {
     { label: "Campaigns", path: "/dashboard/campaigns", icon: <Rocket /> },
     { label: "Outbox", path: "/dashboard/outbox", icon: <Box /> },
     { label: "REST API", path: "/dashboard/api", icon: <Plug /> },
+    { label: "Placeholders", path: "/dashboard/placeholders", icon: <Braces /> },
     { label: "Profile", path: "/dashboard/profile", icon: <User /> },
     { label: "Help & Docs", path: "/dashboard/help", icon: <HelpCircle /> },
   ];

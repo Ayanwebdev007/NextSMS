@@ -26,6 +26,7 @@ import SendPage from "./pages/SendPage";
 import OutboxPage from "./pages/OutboxPage";
 import ApiPage from "./pages/ApiPage";
 import ProfilePage from "./pages/ProfilePage";
+import PlaceholdersPage from "./pages/PlaceholdersPage";
 
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
 import AdminLayout from "./components/layout/AdminLayout";
@@ -87,6 +88,7 @@ function App() {
                 <Route path="/dashboard/outbox" element={<OutboxPage />} />
                 <Route path="/dashboard/api" element={<ApiPage />} />
                 <Route path="/dashboard/profile" element={<ProfilePage />} />
+                <Route path="/dashboard/placeholders" element={<PlaceholdersPage />} />
                 <Route path="/dashboard/help" element={<HelpPage />} />
               </Route>
             </Route>

@@ -45,6 +45,7 @@ import historyRoutes from './routes/historyRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
+import placeholderRoutes from './routes/placeholderRoutes.js';
 
 app.use('/uploads', express.static('uploads'));
 //  all routes 
@@ -59,6 +60,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/placeholders', placeholderRoutes);
 
 // Other payment routes
 app.use('/api/payment', paymentRoutes);
