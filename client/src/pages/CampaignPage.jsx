@@ -28,9 +28,8 @@ import {
 const ToggleSwitch = ({ enabled, setEnabled }) => (
   <div
     onClick={() => setEnabled(!enabled)}
-    className={`flex items-center w-12 h-6 rounded-full p-1 cursor-pointer transition-colors duration-300 ${
-      enabled ? "bg-cyan-500 justify-end" : "bg-neutral-700 justify-start"
-    }`}
+    className={`flex items-center w-12 h-6 rounded-full p-1 cursor-pointer transition-colors duration-300 ${enabled ? "bg-cyan-500 justify-end" : "bg-neutral-700 justify-start"
+      }`}
   >
     <motion.div
       layout
@@ -45,8 +44,15 @@ const CampaignsPage = () => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      message: ""
+    }
+  });
+
+  const messageText = watch("message");
   const navigate = useNavigate();
 
   const [recipientCount, setRecipientCount] = useState(0);
@@ -58,8 +64,10 @@ const CampaignsPage = () => {
   const [mediaFileName, setMediaFileName] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const mediaFileInputRef = useRef(null);
+  const [availablePlaceholders, setAvailablePlaceholders] = useState([]);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [speed, setSpeed] = useState("safe"); // express, safe, ultra-safe
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -72,23 +80,33 @@ const CampaignsPage = () => {
       header: true,
       skipEmptyLines: true,
       complete: (result) => {
-        const numbers = result.data
-          .map((row) => row.PhoneNumber)
-          .map((num) => (num ? num.toString().replace(/\D/g, "") : ""))
-          .filter((num) => num && num.length >= 10);
-        if (numbers.length === 0) {
+        const headers = result.meta.fields || [];
+        const placeholders = headers.filter(h => h !== 'PhoneNumber');
+        setAvailablePlaceholders(placeholders);
+
+        const processedData = result.data
+          .map((row) => {
+            const phoneNumber = row.PhoneNumber ? row.PhoneNumber.toString().replace(/\D/g, "") : "";
+            const variables = { ...row };
+            delete variables.PhoneNumber;
+            return { phoneNumber, variables };
+          })
+          .filter((item) => item.phoneNumber && item.phoneNumber.length >= 10);
+
+        if (processedData.length === 0) {
           toast.error(
-            "No valid phone numbers found in the 'PhoneNumber' column.",
+            "No valid recipients found. Ensure your CSV has a 'PhoneNumber' column.",
             { id: toastId }
           );
           setFileName("");
           setRecipientCount(0);
           setRecipients([]);
+          setAvailablePlaceholders([]);
         } else {
-          setRecipients(numbers);
-          setRecipientCount(numbers.length);
+          setRecipients(processedData);
+          setRecipientCount(processedData.length);
           toast.success(
-            `${numbers.length} recipients successfully extracted.`,
+            `${processedData.length} recipients successfully extracted.`,
             { id: toastId }
           );
         }
@@ -102,6 +120,7 @@ const CampaignsPage = () => {
       },
     });
   };
+
   const handleMediaFileChange = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -132,6 +151,7 @@ const CampaignsPage = () => {
       }
     }
   };
+
   const handleRemoveMediaFile = () => {
     setMediaFileName("");
     setUploadedMediaPath(null);
@@ -162,28 +182,33 @@ const CampaignsPage = () => {
     const api = createAuthenticatedApi(token);
 
     try {
-      // --- THIS IS THE CRITICAL FIX for TIMEZONES ---
-      // 1. Calculate the exact delay in milliseconds from the user's local time.
       let delay = 0;
       if (isScheduled) {
         delay = new Date(scheduledAt).getTime() - Date.now();
       }
-      // --- END OF FIX ---
 
-      // 2. Send both the scheduledAt date (for storage) and the calculated delay.
+      const delayMap = {
+        'express': { min: 2000, max: 5000 },
+        'safe': { min: 5000, max: 12000 },
+        'ultra-safe': { min: 10000, max: 25000 }
+      };
+      const { min: minDelay, max: maxDelay } = delayMap[speed];
+
       await api.post("/campaign/start", {
         name: data.campaignName,
         recipients: recipients,
         message: data.message,
         filePath: uploadedMediaPath,
         scheduledAt: isScheduled ? new Date(scheduledAt).toISOString() : null,
-        delay: delay > 0 ? delay : 0, // Send the calculated delay
+        delay: delay > 0 ? delay : 0,
+        minDelay,
+        maxDelay
       });
 
       const successMessage = isScheduled
         ? `Campaign successfully scheduled for ${new Date(
-            scheduledAt
-          ).toLocaleString("en-IN")}`
+          scheduledAt
+        ).toLocaleString("en-IN")}`
         : `Campaign started! ${recipients.length} messages are being sent.`;
 
       toast.success(successMessage, { id: toastId });
@@ -198,6 +223,88 @@ const CampaignsPage = () => {
   const isLaunchDisabled =
     isSubmitting || isUploadingMedia || user?.sessionStatus !== "connected";
 
+  const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://nextsms-backend.onrender.com';
+
+  const WhatsAppPreview = () => {
+    // 🔗 Live Personalization for the first recipient
+    let previewContent = messageText || "Type your message below...";
+    if (recipients.length > 0 && recipients[0].variables) {
+      const vars = recipients[0].variables;
+      previewContent = previewContent.replace(/{{(\w+)}}/g, (match, key) => {
+        return vars[key] !== undefined ? vars[key] : match;
+      });
+    }
+
+    return (
+      <div className="sticky top-8 border-[6px] border-neutral-800 rounded-[3rem] p-1 bg-neutral-900 shadow-2xl w-full max-w-[300px] mx-auto flex flex-col overflow-hidden ring-1 ring-neutral-700">
+        <div className="bg-[#0b141a] w-full h-full rounded-[2.5rem] flex flex-col overflow-hidden">
+          {/* Phone Header */}
+          <div className="bg-[#202c33] px-4 py-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-neutral-600 flex items-center justify-center">
+                <Wifi size={16} className="text-white" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[11px] font-bold text-white leading-none">Campaign Preview</span>
+                <span className="text-[9px] text-[#8696a0] mt-1">online</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Chat Background */}
+          <div className="flex-1 p-3 overflow-y-auto space-y-4 relative" style={{ backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")', backgroundSize: 'contain' }}>
+            <div className="self-end ml-auto bg-[#005c4b] text-[#e9edef] rounded-lg p-2 max-w-[90%] shadow-md relative mt-4">
+              {/* Message Content */}
+              <div className="space-y-2">
+                {uploadedMediaPath && (
+                  <div className="rounded overflow-hidden -mx-1 -mt-1 mb-2">
+                    <img
+                      src={`${API_URL}/${uploadedMediaPath}`}
+                      alt="Media Preview"
+                      className="w-full h-auto object-cover max-h-[150px]"
+                    />
+                  </div>
+                )}
+                <p className="text-[12px] whitespace-pre-wrap leading-relaxed break-words">
+                  {previewContent}
+                </p>
+              </div>
+
+              {/* Timestamp & Status */}
+              <div className="flex items-center justify-end gap-1 mt-1">
+                <span className="text-[9px] text-[#8696a0]">
+                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <div className="flex opacity-80">
+                  <CheckCircle size={10} className="text-cyan-400" />
+                </div>
+              </div>
+
+              {/* Bubble Tail */}
+              <div className="absolute top-0 -right-1.5 w-0 h-0 border-t-[10px] border-t-[#005c4b] border-r-[10px] border-r-transparent"></div>
+            </div>
+
+            {recipients.length > 0 && (
+              <div className="mx-auto text-center bg-black/40 backdrop-blur-md rounded px-2 py-1 absolute bottom-4 left-0 right-0">
+                <p className="text-[8px] text-neutral-400 italic">Showing preview for recipient #1: {recipients[0].phoneNumber}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Phone Footer */}
+          <div className="bg-[#202c33] p-4 flex items-center gap-3">
+            <div className="flex-1 h-9 bg-[#2a3942] rounded-full px-4 flex items-center">
+              <span className="text-[11px] text-[#8696a0]">Type a message</span>
+            </div>
+            <div className="w-9 h-9 rounded-full bg-[#00a884] flex items-center justify-center shadow-lg">
+              <Rocket size={16} className="text-black" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <button
@@ -208,203 +315,268 @@ const CampaignsPage = () => {
         Back to Dashboard
       </button>
 
-      <div className="max-w-2xl mx-auto bg-black/80 backdrop-blur-sm border border-neutral-800 rounded-2xl p-8 shadow-lg">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white">
-            Create New{" "}
-            <span className="bg-clip-text text-transparent bg-gradient-to-br from-cyan-400 to-indigo-500">
-              Campaign
-            </span>
-          </h1>
-          <p className="text-neutral-400 mt-2">
-            Upload a CSV file with your recipients.
-          </p>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-7 xl:col-span-8 bg-black/80 backdrop-blur-sm border border-neutral-800 rounded-2xl p-8 shadow-lg">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-white">
+              Create New{" "}
+              <span className="bg-clip-text text-transparent bg-gradient-to-br from-cyan-400 to-indigo-500">
+                Campaign
+              </span>
+            </h1>
+            <p className="text-neutral-400 mt-2">
+              Upload a CSV file with your recipients.
+            </p>
+          </div>
 
-        <div
-          className={`flex items-center justify-center gap-2 p-3 rounded-md mb-6 text-sm font-semibold ${
-            user?.sessionStatus === "connected"
+          <div
+            className={`flex items-center justify-center gap-2 p-3 rounded-md mb-6 text-sm font-semibold ${user?.sessionStatus === "connected"
               ? "bg-green-900/50 text-green-300"
               : "bg-red-900/50 text-red-300"
-          }`}
-        >
-          {user?.sessionStatus === "connected" ? (
-            <Wifi size={16} />
-          ) : (
-            <WifiOff size={16} />
-          )}
-          <span>
-            WhatsApp Status:{" "}
-            <span className="font-bold capitalize">
-              {user?.sessionStatus || "Unknown"}
-            </span>
-          </span>
-        </div>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          
-            <Label htmlFor="campaignName">Campaign Name</Label>
-            <Input
-              id="campaignName"
-              placeholder="Kolkata Midnight Offer"
-              type="text"
-              {...register("campaignName", {
-                required: "Campaign name is required.",
-              })}
-            />
-          
-          {errors.campaignName && (
-            <p className="text-red-500 text-sm -mt-4">
-              {errors.campaignName.message}
-            </p>
-          )}
-
-          <div>
-            <Label htmlFor="recipients-file">Recipients File</Label>
-            <p className="text-xs text-neutral-500 mb-2">
-              Upload a CSV with a 'PhoneNumber' column.
-            </p>
-            <label
-              htmlFor="recipients-file"
-              className="w-full cursor-pointer mt-1 flex items-center justify-center gap-3 border-2 border-dashed border-neutral-700 text-neutral-400 rounded-md px-3 py-4 text-sm hover:border-cyan-400 hover:text-cyan-400 transition-colors"
-            >
-              <FileUp size={20} />
-              <span>{fileName || "Click to upload a file"}</span>
-            </label>
-            <input
-              id="recipients-file"
-              type="file"
-              className="hidden"
-              accept=".csv"
-              onChange={handleFileChange}
-              ref={fileInputRef}
-            />
-            {recipientCount > 0 && (
-              <div className="mt-2 flex items-center gap-2 text-green-400 text-sm">
-                <CheckCircle size={16} />
-                <span>{recipientCount} contacts loaded successfully.</span>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor="media-file">Attach Media (Optional)</Label>
-            {!mediaFileName ? (
-              <label
-                htmlFor="media-file"
-                className={`mt-2 w-full cursor-pointer flex items-center gap-3 border border-neutral-700 bg-neutral-900 text-neutral-400 rounded-md px-3 py-2 text-sm ${
-                  isUploadingMedia
-                    ? "cursor-not-allowed opacity-50"
-                    : "hover:bg-neutral-800"
-                }`}
-              >
-                {isUploadingMedia ? (
-                  <LoaderCircle size={16} className="animate-spin" />
-                ) : (
-                  <Paperclip size={16} />
-                )}
-                <span>
-                  {isUploadingMedia ? "Uploading..." : "Choose a file..."}
-                </span>
-              </label>
+              }`}
+          >
+            {user?.sessionStatus === "connected" ? (
+              <Wifi size={16} />
             ) : (
-              <div className="mt-2 flex items-center justify-between gap-3 border border-green-700 bg-green-900/50 text-green-300 rounded-md px-3 py-2 text-sm">
-                <span className="truncate">{mediaFileName}</span>
-                <button
-                  type="button"
-                  onClick={handleRemoveMediaFile}
-                  className="hover:text-white"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+              <WifiOff size={16} />
             )}
-            <input
-              id="media-file"
-              type="file"
-              className="hidden"
-              onChange={handleMediaFileChange}
-              ref={mediaFileInputRef}
-              disabled={isUploadingMedia}
-            />
+            <span>
+              WhatsApp Status:{" "}
+              <span className="font-bold capitalize">
+                {user?.sessionStatus || "Unknown"}
+              </span>
+            </span>
           </div>
 
-          <div>
-            <Label htmlFor="message">Message (Caption)</Label>
-            <textarea
-              id="message"
-              rows="5"
-              placeholder="Hello! This is a special offer from NextSMS..."
-              className="mt-2 flex w-full border-none bg-neutral-900 text-white rounded-md px-3 py-2 text-sm placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-neutral-900"
-              {...register("message", {
-                required: "Message text cannot be empty.",
-              })}
-            />
-          </div>
-          {errors.message && (
-            <p className="text-red-500 text-sm mt-1">
-              {errors.message.message}
-            </p>
-          )}
-
-          <div className="pt-6 border-t border-neutral-800">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Schedule Campaign</Label>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Send your campaign at a future time.
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div>
+              <Label htmlFor="campaignName">Campaign Name</Label>
+              <Input
+                id="campaignName"
+                placeholder="Kolkata Midnight Offer"
+                type="text"
+                {...register("campaignName", {
+                  required: "Campaign name is required.",
+                })}
+              />
+              {errors.campaignName && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.campaignName.message}
                 </p>
-              </div>
-              <ToggleSwitch enabled={isScheduled} setEnabled={setIsScheduled} />
+              )}
             </div>
 
-            <AnimatePresence>
-              {isScheduled && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0, marginTop: 0 }}
-                  animate={{ height: "auto", opacity: 1, marginTop: "1rem" }}
-                  exit={{ height: 0, opacity: 0, marginTop: 0 }}
-                  className="overflow-hidden"
-                >
-                  
-                    <Label htmlFor="scheduledAt">Date and Time to Send</Label>
-                    <div className="relative">
-                      <CalendarClock
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-                        size={16}
-                      />
-                      <Input
-                        id="scheduledAt"
-                        type="datetime-local"
-                        value={scheduledAt}
-                        onChange={(e) => setScheduledAt(e.target.value)}
-                        className="pl-10 appearance-none bg-neutral-800 border-neutral-700 focus:ring-cyan-500 focus:border-cyan-500 [color-scheme:dark]"
-                      />
-                    </div>
-                  
-                </motion.div>
+            <div>
+              <Label htmlFor="recipients-file">Recipients File</Label>
+              <p className="text-xs text-neutral-500 mb-2">
+                Upload a CSV with a 'PhoneNumber' column.
+              </p>
+              <label
+                htmlFor="recipients-file"
+                className="w-full cursor-pointer mt-1 flex items-center justify-center gap-3 border-2 border-dashed border-neutral-700 text-neutral-400 rounded-md px-3 py-4 text-sm hover:border-cyan-400 hover:text-cyan-400 transition-colors"
+              >
+                <FileUp size={20} />
+                <span>{fileName || "Click to upload a file"}</span>
+              </label>
+              <input
+                id="recipients-file"
+                type="file"
+                className="hidden"
+                accept=".csv"
+                onChange={handleFileChange}
+                ref={fileInputRef}
+              />
+              {recipientCount > 0 && (
+                <div className="mt-2 flex items-center gap-2 text-green-400 text-sm">
+                  <CheckCircle size={16} />
+                  <span>{recipientCount} contacts loaded successfully.</span>
+                </div>
               )}
-            </AnimatePresence>
-          </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={isLaunchDisabled}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-cyan-500 to-indigo-500 text-white rounded-md h-12 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? (
-              "Submitting..."
-            ) : isScheduled ? (
-              <>
-                <CalendarClock size={20} /> Schedule Campaign
-              </>
-            ) : (
-              <>
-                <Rocket size={20} /> Launch Now
-              </>
-            )}
-          </button>
-        </form>
+            <div>
+              <Label htmlFor="media-file">Attach Media (Optional)</Label>
+              {!mediaFileName ? (
+                <label
+                  htmlFor="media-file"
+                  className={`mt-2 w-full cursor-pointer flex items-center gap-3 border border-neutral-700 bg-neutral-900 text-neutral-400 rounded-md px-3 py-2 text-sm ${isUploadingMedia
+                    ? "cursor-not-allowed opacity-50"
+                    : "hover:bg-neutral-800"
+                    }`}
+                >
+                  {isUploadingMedia ? (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  ) : (
+                    <Paperclip size={16} />
+                  )}
+                  <span>
+                    {isUploadingMedia ? "Uploading..." : "Choose a file..."}
+                  </span>
+                </label>
+              ) : (
+                <div className="mt-2 flex items-center justify-between gap-3 border border-green-700 bg-green-900/50 text-green-300 rounded-md px-3 py-2 text-sm">
+                  <span className="truncate">{mediaFileName}</span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveMediaFile}
+                    className="hover:text-white"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+              <input
+                id="media-file"
+                type="file"
+                className="hidden"
+                onChange={handleMediaFileChange}
+                ref={mediaFileInputRef}
+                disabled={isUploadingMedia}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="message">Message (Caption)</Label>
+              <textarea
+                id="message"
+                rows="5"
+                placeholder="Hello {{Name}}! This is a special offer for your city {{City}}..."
+                className="mt-2 flex w-full border-none bg-neutral-900 text-white rounded-md px-3 py-2 text-sm placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-neutral-900"
+                {...register("message", {
+                  required: "Message text cannot be empty.",
+                })}
+              />
+              {availablePlaceholders.length > 0 && (
+                <div className="mt-3 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+                  <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest mb-2">Available Placeholders</p>
+                  <div className="flex flex-wrap gap-2">
+                    {availablePlaceholders.map(p => (
+                      <span
+                        key={p}
+                        className="px-2 py-1 bg-neutral-800 text-cyan-300 text-xs rounded border border-neutral-700 cursor-pointer hover:bg-neutral-700"
+                        onClick={() => {
+                          const msg = document.getElementById('message');
+                          const start = msg.selectionStart;
+                          const end = msg.selectionEnd;
+                          const text = msg.value;
+                          const before = text.substring(0, start);
+                          const after = text.substring(end, text.length);
+                          msg.value = `${before}{{${p}}}${after}`;
+                          msg.focus();
+                        }}
+                      >
+                        {`{{${p}}}`}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-neutral-500 mt-2 italic">* Click a tag to insert it at your cursor.</p>
+                </div>
+              )}
+              {errors.message && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.message.message}
+                </p>
+              )}
+            </div>
+
+            <div className="pt-6 border-t border-neutral-800">
+              <div className="mb-8">
+                <Label>Campaign Speed (Anti-Ban)</Label>
+                <p className="text-xs text-neutral-500 mt-1 mb-4">
+                  Faster speeds carry a higher risk of account banning. "Safe" is recommended.
+                </p>
+
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: 'express', label: 'Express', delay: '2-5s', color: 'border-yellow-500/50 text-yellow-500' },
+                    { id: 'safe', label: 'Recommended', delay: '5-12s', color: 'border-green-500/50 text-green-500' },
+                    { id: 'ultra-safe', label: 'Ultra Safe', delay: '10-25s', color: 'border-cyan-500/50 text-cyan-500' }
+                  ].map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSpeed(s.id)}
+                      className={`flex flex-col items-center p-3 rounded-xl border transition-all ${speed === s.id ? `${s.color} bg-neutral-900 ring-2 ring-offset-2 ring-offset-black ring-current` : 'border-neutral-800 text-neutral-500 hover:border-neutral-700'}`}
+                    >
+                      <span className="text-sm font-bold">{s.label}</span>
+                      <span className="text-[10px] opacity-70 mt-1">{s.delay}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-4">
+                <div>
+                  <Label>Schedule Campaign</Label>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Send your campaign at a future time.
+                  </p>
+                </div>
+                <ToggleSwitch enabled={isScheduled} setEnabled={setIsScheduled} />
+              </div>
+
+              <AnimatePresence>
+                {isScheduled && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pb-4">
+                      <Label htmlFor="scheduledAt">Date and Time to Send</Label>
+                      <div className="mt-2 relative">
+                        <CalendarClock
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                          size={16}
+                        />
+                        <Input
+                          id="scheduledAt"
+                          type="datetime-local"
+                          value={scheduledAt}
+                          onChange={(e) => setScheduledAt(e.target.value)}
+                          className="pl-10 appearance-none bg-neutral-800 border-neutral-700 focus:ring-cyan-500 focus:border-cyan-500 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLaunchDisabled}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-cyan-500 to-indigo-500 text-white rounded-md h-12 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                "Submitting..."
+              ) : isScheduled ? (
+                <>
+                  <CalendarClock size={20} /> Schedule Campaign
+                </>
+              ) : (
+                <>
+                  <Rocket size={20} /> Launch Now
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Real-time Preview Sidebar */}
+        <div className="lg:col-span-5 xl:col-span-4 lg:block space-y-4">
+          <div className="bg-black/80 backdrop-blur-sm border border-neutral-800 rounded-2xl p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <CheckCircle size={18} className="text-cyan-400" />
+              Message Overview
+            </h3>
+            <p className="text-xs text-neutral-500 mb-6">
+              This is how your message will appear on your recipients' devices.
+            </p>
+            <WhatsAppPreview />
+          </div>
+        </div>
       </div>
     </>
   );

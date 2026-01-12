@@ -9,6 +9,10 @@ import {
   Clock,
   CalendarClock,
   AlertCircle,
+  FileDown,
+  Download,
+  Play,
+  Pause,
 } from "lucide-react"; // 1. Import new icons
 import { createAuthenticatedApi } from "../services/api";
 
@@ -39,6 +43,12 @@ const CampaignStatusIndicator = ({ status }) => {
           <AlertCircle size={14} /> Failed
         </span>
       );
+    case "paused":
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-400">
+          <Pause size={14} /> Paused
+        </span>
+      );
     default:
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-500">
@@ -55,6 +65,71 @@ const OutboxPage = () => {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
+  const handleTogglePause = async (campaign) => {
+    setIsActionLoading(true);
+    const api = createAuthenticatedApi(token);
+    const isPausing = campaign.status === 'processing';
+    const action = isPausing ? 'pause' : 'resume';
+    const toastId = toast.loading(`${isPausing ? 'Pausing' : 'Resuming'} campaign...`);
+
+    try {
+      await api.post(`/campaign/${action}/${campaign._id}`);
+      toast.success(`Campaign ${isPausing ? 'paused' : 'resumed'} successfully!`, { id: toastId });
+      // Refresh data
+      fetchData();
+    } catch (err) {
+      console.error(`Toggle ${action} failed:`, err);
+      toast.error(`Failed to ${action} campaign.`, { id: toastId });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleExportCampaign = async (campaign) => {
+    setIsExporting(true);
+    const toastId = toast.loading(`Generating report for ${campaign.name}...`);
+    const api = createAuthenticatedApi(token);
+
+    try {
+      const response = await api.get(`/history/campaign/${campaign._id}/messages`);
+      const data = response.data;
+
+      if (data.length === 0) {
+        toast.error("No messages found for this campaign.", { id: toastId });
+        return;
+      }
+
+      // Convert to CSV
+      const headers = ["Recipient", "Content", "Status", "Sent At", "Error"];
+      const rows = data.map(m => [
+        m.recipient,
+        `"${m.content.replace(/"/g, '""')}"`, // Quote escape
+        m.status,
+        new Date(m.createdAt).toLocaleString("en-IN"),
+        m.errorMessage || ""
+      ]);
+
+      const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Report_${campaign.name.replace(/\s+/g, '_')}_${new Date().toLocaleDateString()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success("Report downloaded successfully!", { id: toastId });
+    } catch (err) {
+      console.error("Export failed:", err);
+      toast.error("Failed to generate report.", { id: toastId });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -99,6 +174,9 @@ const OutboxPage = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">
                 Created / Scheduled On
               </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-neutral-400 uppercase">
+                Action
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-800">
@@ -136,6 +214,42 @@ const OutboxPage = () => {
                   {c.scheduledAt
                     ? new Date(c.scheduledAt).toLocaleString("en-IN")
                     : new Date(c.createdAt).toLocaleString("en-IN")}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    {c.status === 'processing' && (
+                      <button
+                        onClick={() => handleTogglePause(c)}
+                        disabled={isActionLoading}
+                        className="inline-flex items-center gap-2 bg-orange-900/50 hover:bg-orange-900 text-orange-400 hover:text-orange-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                        title="Pause Campaign"
+                      >
+                        <Pause size={14} />
+                        Pause
+                      </button>
+                    )}
+                    {c.status === 'paused' && (
+                      <button
+                        onClick={() => handleTogglePause(c)}
+                        disabled={isActionLoading}
+                        className="inline-flex items-center gap-2 bg-green-900/50 hover:bg-green-900 text-green-400 hover:text-green-300 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                        title="Resume Campaign"
+                      >
+                        <Play size={14} />
+                        Resume
+                      </button>
+                    )}
+                    {c.status !== 'scheduled' && (
+                      <button
+                        onClick={() => handleExportCampaign(c)}
+                        disabled={isExporting}
+                        className="inline-flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                      >
+                        <Download size={14} />
+                        Export
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -182,9 +296,8 @@ const OutboxPage = () => {
                 </td>
                 <td className="px-6 py-4">
                   <span
-                    className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
-                      m.status === "sent" ? "text-green-400" : "text-red-400"
-                    }`}
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold ${m.status === "sent" ? "text-green-400" : "text-red-400"
+                      }`}
                   >
                     {m.status === "sent" ? (
                       <CheckCircle size={14} />
@@ -243,21 +356,19 @@ const OutboxPage = () => {
         <nav className="-mb-px flex space-x-6">
           <button
             onClick={() => setActiveTab("campaigns")}
-            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === "campaigns"
-                ? "border-cyan-400 text-cyan-400"
-                : "border-transparent text-neutral-400 hover:text-white hover:border-neutral-700"
-            }`}
+            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "campaigns"
+              ? "border-cyan-400 text-cyan-400"
+              : "border-transparent text-neutral-400 hover:text-white hover:border-neutral-700"
+              }`}
           >
             Campaigns
           </button>
           <button
             onClick={() => setActiveTab("messages")}
-            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === "messages"
-                ? "border-cyan-400 text-cyan-400"
-                : "border-transparent text-neutral-400 hover:text-white hover:border-neutral-700"
-            }`}
+            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "messages"
+              ? "border-cyan-400 text-cyan-400"
+              : "border-transparent text-neutral-400 hover:text-white hover:border-neutral-700"
+              }`}
           >
             Single Messages
           </button>

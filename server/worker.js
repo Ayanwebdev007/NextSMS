@@ -27,7 +27,7 @@ await restoreSessions();
 const worker = new Worker(
     "messages",
     async (job) => {
-        const { businessId, campaignId, recipient, text, mediaUrl, filePath } =
+        const { businessId, campaignId, recipient, text, mediaUrl, filePath, variables, minDelay, maxDelay } =
             job.data;
 
         console.log(`[WORKER] Processing message for ${recipient}`);
@@ -40,19 +40,37 @@ const worker = new Worker(
 
         const sock = clientData.sock;
 
+        // 🛑 Pause Check
+        if (campaignId) {
+            const campaign = await Campaign.findById(campaignId);
+            if (campaign && campaign.status === 'paused') {
+                console.log(`[WORKER] Campaign ${campaignId} is paused. Rescheduling job ${job.id}...`);
+                await job.moveToDelayed(Date.now() + 30000);
+                return;
+            }
+        }
+
+        // 🔗 Variable Replacement Logic
+        let processedText = text;
+        if (variables && typeof variables === 'object') {
+            processedText = text.replace(/{{(\w+)}}/g, (match, key) => {
+                return variables[key] !== undefined ? variables[key] : match;
+            });
+        }
+
         // ✅ Baileys JID format
         const jid = recipient.includes("@s.whatsapp.net")
             ? recipient
             : `${recipient.replace(/\D/g, "")}@s.whatsapp.net`;
 
         try {
-            let messagePayload = { text };
+            let messagePayload = { text: processedText };
 
             // 📎 Media from local file
             if (filePath && fs.existsSync(filePath)) {
                 messagePayload = {
                     image: fs.readFileSync(filePath),
-                    caption: text,
+                    caption: processedText,
                 };
             }
 
@@ -60,7 +78,7 @@ const worker = new Worker(
             if (mediaUrl) {
                 messagePayload = {
                     image: { url: mediaUrl },
-                    caption: text,
+                    caption: processedText,
                 };
             }
 
@@ -81,7 +99,7 @@ const worker = new Worker(
                 businessId,
                 campaignId,
                 recipient,
-                content: text,
+                content: processedText,
                 status: "sent",
                 sentAt: new Date(),
             });
@@ -98,7 +116,7 @@ const worker = new Worker(
                 businessId,
                 campaignId,
                 recipient,
-                content: text,
+                content: processedText,
                 status: "failed",
                 errorMessage: error.message,
             });
@@ -106,8 +124,12 @@ const worker = new Worker(
             throw error;
         }
 
-        // ⏱️ Anti-ban delay (4–10 sec)
-        const delay = Math.floor(Math.random() * (10000 - 4000 + 1)) + 4000;
+        // ⏱️ Dynamic Anti-ban delay
+        const min = minDelay || 4000;
+        const max = maxDelay || 10000;
+        const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+
+        console.log(`[WORKER] Waiting for ${delay}ms before next message...`);
         await new Promise((r) => setTimeout(r, delay));
     },
     { connection }

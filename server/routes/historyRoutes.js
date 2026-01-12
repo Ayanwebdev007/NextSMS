@@ -1,5 +1,5 @@
 import express from 'express';
-import { getCampaignHistory, getSingleMessageHistory } from '../controllers/historyController.js';
+import { getCampaignHistory, getSingleMessageHistory, getCampaignMessages } from '../controllers/historyController.js';
 import { authMiddleware } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
@@ -9,5 +9,6 @@ router.use(authMiddleware);
 
 router.get('/campaigns', getCampaignHistory);
 router.get('/messages', getSingleMessageHistory);
+router.get('/campaign/:campaignId/messages', getCampaignMessages);
 
 export default router;

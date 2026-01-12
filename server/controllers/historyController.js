@@ -19,3 +19,13 @@ export const getSingleMessageHistory = asyncHandler(async (req, res) => {
         .limit(100);
     res.status(200).json(messages);
 });
+// NEW: Get all messages for a specific campaign (for exporting)
+export const getCampaignMessages = asyncHandler(async (req, res) => {
+    const { campaignId } = req.params;
+    const messages = await Message.find({
+        businessId: req.business._id,
+        campaignId: campaignId
+    }).sort({ createdAt: 1 }); // Sort by sequence of sending
+
+    res.status(200).json(messages);
+});

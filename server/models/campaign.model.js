@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const campaignSchema = new mongoose.Schema({
-    name: { 
+    name: {
         type: String,
         required: true
     },
@@ -19,10 +19,10 @@ const campaignSchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: ['pending', 'processing', 'paused', 'completed', 'failed','scheduled'],
+        enum: ['pending', 'processing', 'paused', 'completed', 'failed', 'scheduled'],
         default: 'pending'
     },
-    
+
     // Statistics for the dashboard
     totalMessages: { type: Number, default: 0 },
     sentCount: { type: Number, default: 0 },
@@ -32,7 +32,11 @@ const campaignSchema = new mongoose.Schema({
     scheduledAt: {
         type: Date,
         default: null
-    }
+    },
+
+    // Anti-ban settings
+    minDelay: { type: Number, default: 4000 },
+    maxDelay: { type: Number, default: 10000 }
 }, { timestamps: true });
 
 export const Campaign = mongoose.model('Campaign', campaignSchema);
