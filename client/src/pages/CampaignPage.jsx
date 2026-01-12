@@ -405,7 +405,7 @@ const CampaignsPage = () => {
                 <Label htmlFor="recipients-file" className="text-white">Recipients File</Label>
                 <p className="text-[10px] text-neutral-500 mb-3">Upload a CSV with a 'PhoneNumber' column.</p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label
                     htmlFor="recipients-file"
                     className="cursor-pointer flex items-center justify-center gap-3 border-2 border-dashed border-neutral-800 text-neutral-500 rounded-xl px-4 py-4 text-sm hover:border-cyan-500/50 hover:text-neutral-300 transition-all bg-neutral-900/30 font-medium h-14"
