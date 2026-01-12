@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Shield, Building, AppWindow, LogOut,Inbox } from 'lucide-react';
+import { Shield, Building, AppWindow, LogOut, Inbox, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import toast from 'react-hot-toast';
 
@@ -10,7 +10,7 @@ const AdminSidebar = () => {
     const handleLogout = () => {
         logout();
         toast.success("Admin logged out.");
-        window.location.href = '/login'; 
+        window.location.href = '/login';
     };
 
     const baseLinkClass = "flex items-center gap-3 rounded-lg px-3 py-2 text-neutral-400 transition-all hover:text-white hover:bg-neutral-800";
@@ -42,7 +42,7 @@ const AdminSidebar = () => {
                             Manage Plans
                         </NavLink>
                     </li>
-                     <li>
+                    <li>
                         <NavLink
                             to="/admin/submissions"
                             className={({ isActive }) => `${baseLinkClass} ${isActive ? activeLinkClass : ''}`}
@@ -52,8 +52,15 @@ const AdminSidebar = () => {
                         </NavLink>
                     </li>-
                 </ul>
-                <div className="mt-auto">
-                     <button
+                <div className="mt-auto space-y-1">
+                    <NavLink
+                        to="/dashboard"
+                        className={baseLinkClass}
+                    >
+                        <LayoutDashboard className="h-5 w-5" />
+                        Back to Dashboard
+                    </NavLink>
+                    <button
                         onClick={handleLogout}
                         className={`${baseLinkClass} w-full`}
                     >
