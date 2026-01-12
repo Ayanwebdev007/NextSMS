@@ -68,6 +68,38 @@ const CampaignsPage = () => {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
   const [speed, setSpeed] = useState("safe"); // express, safe, ultra-safe
+  const [customVars, setCustomVars] = useState([]);
+  const [newVarInput, setNewVarInput] = useState("");
+
+  const handleAddCustomVar = (e) => {
+    e.preventDefault();
+    if (!newVarInput.trim()) return;
+    const cleanVar = newVarInput.trim().replace(/[^a-zA-Z0-9]/g, '');
+    if (cleanVar && !customVars.includes(cleanVar)) {
+      setCustomVars([...customVars, cleanVar]);
+      setNewVarInput("");
+    }
+  };
+
+  const handleRemoveCustomVar = (v) => {
+    setCustomVars(customVars.filter(item => item !== v));
+  };
+
+  const handleDownloadSample = () => {
+    const headers = ["PhoneNumber", ...customVars];
+    const csvContent = headers.join(",") + "\n" + "910000000000," + customVars.map(() => "SampleData").join(",");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "NextSMS_Sample_Recipients.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Sample CSV downloaded!");
+  };
+
+  const totalPlaceholders = Array.from(new Set([...availablePlaceholders, ...customVars]));
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -230,10 +262,20 @@ const CampaignsPage = () => {
   const WhatsAppPreview = () => {
     // 🔗 Live Personalization for the first recipient
     let previewContent = messageText || "Type your message below...";
+
+    // Create a mock variable set for preview if no CSV is uploaded
+    const mockVars = {};
+    customVars.forEach(v => mockVars[v] = `[${v} Value]`);
+
     if (recipients.length > 0 && recipients[0].variables) {
       const vars = recipients[0].variables;
       previewContent = previewContent.replace(/{{(\w+)}}/g, (match, key) => {
         return vars[key] !== undefined ? vars[key] : match;
+      });
+    } else {
+      // Show sample values for custom variables if no CSV loaded
+      previewContent = previewContent.replace(/{{(\w+)}}/g, (match, key) => {
+        return mockVars[key] !== undefined ? mockVars[key] : match;
       });
     }
 
@@ -396,6 +438,55 @@ const CampaignsPage = () => {
               )}
             </div>
 
+            <div className="p-4 bg-neutral-900/50 border border-neutral-800 rounded-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>1. Define Custom Variables</Label>
+                  <p className="text-[10px] text-neutral-500">Create tags like Name, Offer, or Balance.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadSample}
+                  className="text-[10px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-2 py-1 rounded border border-neutral-700 flex items-center gap-1 transition-colors"
+                  title="Download CSV Template"
+                >
+                  <FileUp size={12} />
+                  Download Sample CSV
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. BillAmount"
+                  value={newVarInput}
+                  onChange={(e) => setNewVarInput(e.target.value)}
+                  className="flex-1 bg-black border border-neutral-700 rounded-md px-3 py-1.5 text-xs text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddCustomVar(e)}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomVar}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+
+              {customVars.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-neutral-800">
+                  {customVars.map(v => (
+                    <span key={v} className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded text-[10px] flex items-center gap-1 border border-neutral-700">
+                      {v}
+                      <button type="button" onClick={() => handleRemoveCustomVar(v)} className="hover:text-red-400">
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div>
               <Label htmlFor="media-file">Attach Media (Optional)</Label>
               {!mediaFileName ? (
@@ -448,11 +539,11 @@ const CampaignsPage = () => {
                   required: "Message text cannot be empty.",
                 })}
               />
-              {availablePlaceholders.length > 0 && (
+              {totalPlaceholders.length > 0 && (
                 <div className="mt-3 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
                   <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest mb-2">Available Placeholders</p>
                   <div className="flex flex-wrap gap-2">
-                    {availablePlaceholders.map(p => (
+                    {totalPlaceholders.map(p => (
                       <span
                         key={p}
                         className="px-2 py-1 bg-neutral-800 text-cyan-300 text-xs rounded border border-neutral-700 cursor-pointer hover:bg-neutral-700"
