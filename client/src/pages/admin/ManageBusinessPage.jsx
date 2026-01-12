@@ -125,9 +125,9 @@ const ManageBusinessesPage = () => {
         <h1 className="text-3xl font-bold text-white">Manage Businesses</h1>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-neutral-800">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-lg">
+        <div className="">
+          <table className="min-w-full divide-y divide-neutral-800 rounded-lg">
             <thead className="bg-neutral-950">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">Name</th>
