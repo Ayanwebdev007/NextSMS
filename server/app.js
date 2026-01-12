@@ -29,6 +29,9 @@ app.use(cors(corsOptions));
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), handleWebhook);
 
 
+// Health Check for UptimeRobot
+app.get('/ping', (req, res) => res.send('pong'));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
