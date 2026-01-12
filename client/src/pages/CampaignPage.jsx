@@ -405,10 +405,10 @@ const CampaignsPage = () => {
                 <Label htmlFor="recipients-file" className="text-white">Recipients File</Label>
                 <p className="text-[10px] text-neutral-500 mb-3">Upload a CSV with a 'PhoneNumber' column.</p>
 
-                <div className="flex items-center gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
                   <label
                     htmlFor="recipients-file"
-                    className="flex-1 max-w-sm cursor-pointer flex items-center justify-center gap-3 border-2 border-dashed border-neutral-800 text-neutral-500 rounded-xl px-4 py-3 text-sm hover:border-cyan-500/50 hover:text-neutral-300 transition-all bg-neutral-900/30 font-medium"
+                    className="cursor-pointer flex items-center justify-center gap-3 border-2 border-dashed border-neutral-800 text-neutral-500 rounded-xl px-4 py-4 text-sm hover:border-cyan-500/50 hover:text-neutral-300 transition-all bg-neutral-900/30 font-medium h-14"
                   >
                     <FileUp size={18} />
                     <span className="truncate">{fileName || "Click to upload a file"}</span>
@@ -417,19 +417,19 @@ const CampaignsPage = () => {
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(true)}
-                    className="flex-1 max-w-[200px] flex items-center justify-center gap-3 border border-cyan-500/30 bg-cyan-500/5 text-cyan-400 rounded-xl px-4 py-3 text-sm font-bold hover:bg-cyan-500/10 transition-all shadow-lg shadow-cyan-500/5"
+                    className="flex items-center justify-center gap-3 border border-cyan-500/30 bg-cyan-500/5 text-cyan-400 rounded-xl px-4 py-4 text-sm font-bold hover:bg-cyan-500/10 transition-all shadow-lg shadow-cyan-500/5 h-14 w-full"
                   >
                     <Braces size={18} />
                     <span>Download Template</span>
                   </button>
-
-                  {recipientCount > 0 && (
-                    <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/5 px-3 py-3 rounded-xl border border-green-500/10 h-full">
-                      <CheckCircle size={14} />
-                      <span className="font-bold">{recipientCount} Loaded</span>
-                    </div>
-                  )}
                 </div>
+
+                {recipientCount > 0 && (
+                  <div className="mt-3 inline-flex items-center gap-2 text-green-400 text-xs bg-green-500/5 px-3 py-2 rounded-lg border border-green-500/10">
+                    <CheckCircle size={14} />
+                    <span className="font-bold">{recipientCount} Recipients Loaded</span>
+                  </div>
+                )}
 
                 <input
                   id="recipients-file"
