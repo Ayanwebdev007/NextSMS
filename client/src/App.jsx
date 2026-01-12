@@ -38,8 +38,7 @@ import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsPage from "./pages/TermsPage";
 import RefundPolicyPage from "./pages/RefundPolicyPage";
 
-const GOOGLE_CLIENT_ID =
-  "385092667687-bo3674j434681511p9kuchhcu03jip9c.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "385092667687-bo3674j434681511p9kuchhcu03jip9c.apps.googleusercontent.com";
 const Home = () => {
   const { token } = useAuth();
 
