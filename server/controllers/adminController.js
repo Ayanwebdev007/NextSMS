@@ -1,6 +1,10 @@
 import asyncHandler from 'express-async-handler';
+import mongoose from 'mongoose';
 import { Business } from '../models/business.model.js';
 import { ContactSubmission } from '../models/contact.model.js';
+import { Campaign } from '../models/campaign.model.js';
+import { Message } from '../models/message.model.js';
+import { Activity } from '../models/activity.model.js';
 
 
 export const getAllBusinesses = asyncHandler(async (req, res) => {
@@ -70,5 +74,50 @@ export const updateBusinessCredits = asyncHandler(async (req, res) => {
         credits: business.credits,
         planExpiry: business.planExpiry,
         plan: business.plan
+    });
+});
+
+export const getBusinessActivity = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // 1. Get Campaign Stats
+    const campaignsCount = await Campaign.countDocuments({ businessId: id });
+    const messageStats = await Campaign.aggregate([
+        { $match: { businessId: new mongoose.Types.ObjectId(id) } },
+        {
+            $group: {
+                _id: null,
+                totalSent: { $sum: "$sentCount" },
+                totalFailed: { $sum: "$failedCount" },
+                totalQueued: { $sum: "$totalMessages" }
+            }
+        }
+    ]);
+
+    // 2. Get Recent Campaigns
+    const recentCampaigns = await Campaign.find({ businessId: id })
+        .sort({ createdAt: -1 })
+        .limit(5);
+
+    // 3. Get Recent Individual Messages
+    const recentMessages = await Message.find({ businessId: id })
+        .sort({ createdAt: -1 })
+        .limit(10);
+
+    // 4. Get Connectivity History
+    const connectivityHistory = await Activity.find({ businessId: id })
+        .sort({ createdAt: -1 })
+        .limit(10);
+
+    res.status(200).json({
+        stats: {
+            campaignsCount,
+            totalSent: messageStats[0]?.totalSent || 0,
+            totalFailed: messageStats[0]?.totalFailed || 0,
+            totalQueued: messageStats[0]?.totalQueued || 0
+        },
+        recentCampaigns,
+        recentMessages,
+        connectivityHistory
     });
 });

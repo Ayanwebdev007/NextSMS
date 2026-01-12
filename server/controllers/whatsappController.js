@@ -20,7 +20,7 @@ const initializing = new Set();
    AUTH PATH
 ======================= */
 const AUTH_PATH =
-    process.env.NODE_ENV === "production" ? path.join(os.tmpdir(), "baileys_auth") : path.resolve("./.baileys_auth"); 
+    process.env.NODE_ENV === "production" ? path.join(os.tmpdir(), "baileys_auth") : path.resolve("./.baileys_auth");
 
 if (!fs.existsSync(AUTH_PATH)) {
     fs.mkdirSync(AUTH_PATH, { recursive: true });
@@ -112,6 +112,12 @@ const initializeClient = async (businessId) => {
             await Business.findByIdAndUpdate(businessId, {
                 sessionStatus: "qr_pending",
             });
+
+            await Activity.create({
+                businessId,
+                event: 'qr_generated',
+                details: 'WhatsApp QR code generated for authentication'
+            });
         }
 
         /* -------- READY -------- */
@@ -124,6 +130,12 @@ const initializeClient = async (businessId) => {
 
             await Business.findByIdAndUpdate(businessId, {
                 sessionStatus: "connected",
+            });
+
+            await Activity.create({
+                businessId,
+                event: 'connected',
+                details: 'WhatsApp session successfully connected'
             });
         }
 
@@ -139,6 +151,13 @@ const initializeClient = async (businessId) => {
 
             await Business.findByIdAndUpdate(businessId, {
                 sessionStatus: "disconnected",
+            });
+
+            const isLogout = statusCode === DisconnectReason.loggedOut;
+            await Activity.create({
+                businessId,
+                event: isLogout ? 'auth_failure' : 'disconnected',
+                details: `Disconnected with code: ${code}. ${isLogout ? 'Session logged out.' : 'Attempting reconnect...'}`
             });
 
             /* AUTO RECONNECT (NOT LOGOUT) */
