@@ -5,6 +5,7 @@ import makeWASocket, {
 
 import asyncHandler from "express-async-handler";
 import { Business } from "../models/business.model.js";
+import { Activity } from "../models/activity.model.js";
 import qrcode from "qrcode";
 import fs from "fs";
 import path from "path";
