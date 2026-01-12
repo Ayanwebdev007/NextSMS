@@ -132,9 +132,7 @@ const CampaignsPage = () => {
 
     try {
       const api = createAuthenticatedApi(token);
-      const response = await api.post("/media/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const response = await api.post("/media/upload", formData);
       setUploadedMediaPath(response.data.filePath);
       setMediaFileName(file.name);
       toast.success("Media file attached successfully!", { id: toastId });
@@ -223,7 +221,11 @@ const CampaignsPage = () => {
   const isLaunchDisabled =
     isSubmitting || isUploadingMedia || user?.sessionStatus !== "connected";
 
-  const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://nextsms-backend.onrender.com';
+  const getRootUrl = () => {
+    const base = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://nextsms-backend.onrender.com';
+    return base.replace(/\/api$/, '').replace(/\/$/, '');
+  };
+  const API_URL = getRootUrl();
 
   const WhatsAppPreview = () => {
     // 🔗 Live Personalization for the first recipient

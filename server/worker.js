@@ -11,6 +11,10 @@ import { Campaign } from "./models/campaign.model.js";
 
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log("[WORKER] Starting Baileys message worker...");
 
@@ -67,15 +71,22 @@ const worker = new Worker(
             let messagePayload = { text: processedText };
 
             // 📎 Media from local file
-            if (filePath && fs.existsSync(filePath)) {
-                messagePayload = {
-                    image: fs.readFileSync(filePath),
-                    caption: processedText,
-                };
+            // Try resolving relative to server root first (where uploads folder usually is)
+            let resolvedPath = filePath ? path.resolve(__dirname, filePath) : null;
+
+            // Fallback: if not found, try as-is (might be absolute or relative to CWD)
+            if (resolvedPath && !fs.existsSync(resolvedPath)) {
+                resolvedPath = filePath;
             }
 
-            // 🌐 Media from URL
-            if (mediaUrl) {
+            if (resolvedPath && fs.existsSync(resolvedPath)) {
+                console.log(`[WORKER] Found media file at: ${resolvedPath}`);
+                messagePayload = {
+                    image: fs.readFileSync(resolvedPath),
+                    caption: processedText,
+                };
+            } else if (mediaUrl) {
+                // 🌐 Media from URL (only if local file not found/provided)
                 messagePayload = {
                     image: { url: mediaUrl },
                     caption: processedText,
