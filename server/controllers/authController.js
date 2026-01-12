@@ -4,7 +4,8 @@ import asyncHandler from 'express-async-handler';
 import { Business } from '../models/business.model.js';
 import { OAuth2Client } from 'google-auth-library';
 
-// googleClient will be initialized inside the handler to ensure env vars are loaded
+// This needs to be initialized to be used in the Google login function
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -84,21 +85,10 @@ export const handleGoogleLogin = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Google credential token is required.' });
     }
 
-    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-    let ticket;
-    try {
-        ticket = await client.verifyIdToken({
-            idToken: credential,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
-    } catch (error) {
-        console.error('Google Token Verification Error:', error.message);
-        return res.status(401).json({
-            message: 'Google token verification failed.',
-            error: error.message
-        });
-    }
+    const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+    });
 
     const { name, email, sub: googleId } = ticket.getPayload();
     let business = await Business.findOne({ googleId });

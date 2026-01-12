@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   HelpCircle,
+  Shield,
 } from "lucide-react";
 
 // --- Context and Provider (No Changes) ---
@@ -178,6 +179,12 @@ const AppSidebarContent = () => {
     { label: "Profile", path: "/dashboard/profile", icon: <User /> },
     { label: "Help & Docs", path: "/dashboard/help", icon: <HelpCircle /> },
   ];
+
+  // Add Admin Panel link if the user is an admin
+  const { user } = useAuth();
+  if (user && user.role === 'admin') {
+    navLinks.push({ label: "Admin Panel", path: "/admin/businesses", icon: <Shield /> });
+  }
 
   return (
     // FIX: Removed 'overflow-hidden' to make the toggle button visible
