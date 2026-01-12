@@ -401,29 +401,36 @@ const CampaignsPage = () => {
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="recipients-file" className="text-white">Recipients File</Label>
-                  <p className="text-[10px] text-neutral-500">Upload a CSV with a 'PhoneNumber' column.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(true)}
-                  className="text-[10px] bg-cyan-600/10 hover:bg-cyan-600/20 text-cyan-400 px-3 py-1.5 rounded-lg border border-cyan-500/30 flex items-center gap-2 transition-all"
-                >
-                  <FileUp size={14} />
-                  Download Custom CSV
-                </button>
-              </div>
+              <div>
+                <Label htmlFor="recipients-file" className="text-white">Recipients File</Label>
+                <p className="text-[10px] text-neutral-500 mb-3">Upload a CSV with a 'PhoneNumber' column.</p>
 
-              <div className="flex items-center gap-4">
-                <label
-                  htmlFor="recipients-file"
-                  className="flex-1 max-w-md cursor-pointer flex items-center justify-center gap-3 border-2 border-dashed border-neutral-800 text-neutral-500 rounded-xl px-4 py-3 text-sm hover:border-cyan-500/50 hover:text-neutral-300 transition-all bg-neutral-900/30"
-                >
-                  <FileUp size={18} />
-                  <span className="truncate">{fileName || "Click to upload a file"}</span>
-                </label>
+                <div className="flex items-center gap-3">
+                  <label
+                    htmlFor="recipients-file"
+                    className="flex-1 max-w-sm cursor-pointer flex items-center justify-center gap-3 border-2 border-dashed border-neutral-800 text-neutral-500 rounded-xl px-4 py-3 text-sm hover:border-cyan-500/50 hover:text-neutral-300 transition-all bg-neutral-900/30 font-medium"
+                  >
+                    <FileUp size={18} />
+                    <span className="truncate">{fileName || "Click to upload a file"}</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(true)}
+                    className="flex-1 max-w-[200px] flex items-center justify-center gap-3 border border-cyan-500/30 bg-cyan-500/5 text-cyan-400 rounded-xl px-4 py-3 text-sm font-bold hover:bg-cyan-500/10 transition-all shadow-lg shadow-cyan-500/5"
+                  >
+                    <Braces size={18} />
+                    <span>Download Template</span>
+                  </button>
+
+                  {recipientCount > 0 && (
+                    <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/5 px-3 py-3 rounded-xl border border-green-500/10 h-full">
+                      <CheckCircle size={14} />
+                      <span className="font-bold">{recipientCount} Loaded</span>
+                    </div>
+                  )}
+                </div>
+
                 <input
                   id="recipients-file"
                   type="file"
@@ -432,12 +439,6 @@ const CampaignsPage = () => {
                   onChange={handleFileChange}
                   ref={fileInputRef}
                 />
-                {recipientCount > 0 && (
-                  <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/5 px-3 py-2 rounded-xl border border-green-500/10">
-                    <CheckCircle size={14} />
-                    <span>{recipientCount} Loaded</span>
-                  </div>
-                )}
               </div>
             </div>
 
