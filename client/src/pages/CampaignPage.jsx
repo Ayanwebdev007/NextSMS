@@ -273,7 +273,7 @@ const CampaignsPage = () => {
 
   const WhatsAppPreview = () => {
     // 🔗 Live Personalization for the first recipient
-    let previewContent = messageText || "Type your message below...";
+    let previewContent = messageValue || "Type your message below...";
 
     // Create a mock variable set for preview if no CSV is uploaded
     const mockVars = {};

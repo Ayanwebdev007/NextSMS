@@ -86,9 +86,6 @@ const PlaceholdersPage = () => {
 
             <div className="max-w-6xl">
                 <div className="mb-12">
-                    <div className="inline-flex p-3 bg-cyan-500/10 rounded-2xl mb-4 border border-cyan-500/20 shadow-lg shadow-cyan-500/5">
-                        <Braces className="text-cyan-400" size={32} />
-                    </div>
                     <h1 className="text-4xl font-bold text-white mb-3">
                         Custom{" "}
                         <span className="bg-clip-text text-transparent bg-gradient-to-br from-cyan-400 to-indigo-500">
