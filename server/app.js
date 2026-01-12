@@ -13,7 +13,13 @@ connectDB().then(() => {
 });
 const app = express();
 const corsOptions = {
-  origin: process.env.FRONTEND_URL, // Only allow your frontend
+  origin: [
+    process.env.FRONTEND_URL,
+    'https://nextsms-client.onrender.com',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ].filter(Boolean),
+  credentials: true,
 };
 app.use(cors(corsOptions));
 
