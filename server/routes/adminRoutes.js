@@ -1,5 +1,5 @@
 import express from 'express';
-import { getAllBusinesses, getContactSubmissions, updateBusinessStatus } from '../controllers/adminController.js';
+import { getAllBusinesses, getContactSubmissions, updateBusinessStatus, updateBusinessCredits } from '../controllers/adminController.js';
 import { createPlan, getAllPlans, updatePlan } from '../controllers/planController.js'; // Moved from planRoutes
 import { protectAdmin } from '../middlewares/adminAuth.js';
 
