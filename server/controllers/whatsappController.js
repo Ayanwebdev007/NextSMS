@@ -75,7 +75,7 @@ export const restoreSessions = async () => {
 /* =======================
    INITIALIZE CLIENT
 ======================= */
-const initializeClient = async (businessId) => {
+export const initializeClient = async (businessId) => {
     if (clients[businessId] || initializing.has(businessId)) return;
 
     initializing.add(businessId);
@@ -188,15 +188,15 @@ const initializeClient = async (businessId) => {
 
             console.warn(`[DISCONNECTED] ${businessId}`, code);
 
+            const isLogout = statusCode === DisconnectReason.loggedOut;
+            const isManual = clients[businessId]?.manualDisconnect;
+
             delete clients[businessId];
             initializing.delete(businessId);
 
             await Business.findByIdAndUpdate(businessId, {
                 sessionStatus: "disconnected",
             });
-
-            const isLogout = statusCode === DisconnectReason.loggedOut;
-            const isManual = clients[businessId]?.manualDisconnect;
 
             await Activity.create({
                 businessId,

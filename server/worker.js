@@ -34,40 +34,59 @@ const worker = new Worker(
         const { businessId, campaignId, recipient, text, mediaUrl, filePath, variables, minDelay, maxDelay } =
             job.data;
 
-        console.log(`[WORKER] Processing message for ${recipient}`);
-
-        const clientData = clients[businessId];
-
-        if (!clientData || clientData.status !== "ready") {
-            throw new Error("WhatsApp session not ready");
-        }
-
-        const sock = clientData.sock;
-
-        // 🛑 Pause Check
-        if (campaignId) {
-            const campaign = await Campaign.findById(campaignId);
-            if (campaign && campaign.status === 'paused') {
-                console.log(`[WORKER] Campaign ${campaignId} is paused. Rescheduling job ${job.id}...`);
-                await job.moveToDelayed(Date.now() + 30000);
-                return;
-            }
-        }
-
-        // 🔗 Variable Replacement Logic
-        let processedText = text;
-        if (variables && typeof variables === 'object') {
-            processedText = text.replace(/{{(\w+)}}/g, (match, key) => {
-                return variables[key] !== undefined ? variables[key] : match;
-            });
-        }
-
-        // ✅ Baileys JID format
-        const jid = recipient.includes("@s.whatsapp.net")
-            ? recipient
-            : `${recipient.replace(/\D/g, "")}@s.whatsapp.net`;
+        console.log(`[WORKER] Processing message for ${recipient} (Business: ${businessId})`);
 
         try {
+            // 🛑 Pause Check
+            if (campaignId) {
+                const campaign = await Campaign.findById(campaignId);
+                if (campaign && campaign.status === 'paused') {
+                    console.log(`[WORKER] Campaign ${campaignId} is paused. Rescheduling job ${job.id}...`);
+                    await job.moveToDelayed(Date.now() + 30000);
+                    return;
+                }
+            }
+
+            // 🔍 Session Check & Auto-Recovery
+            let clientData = clients[businessId];
+
+            if (!clientData || clientData.status !== "ready") {
+                console.log(`[WORKER] Session not ready for ${businessId}. Checking database status...`);
+                const business = await Business.findById(businessId);
+
+                if (business && business.sessionStatus === "connected") {
+                    console.log(`[WORKER] DB says connected. Attempting auto-initialization for ${businessId}...`);
+                    const { initializeClient } = await import("./controllers/whatsappController.js");
+                    await initializeClient(businessId);
+
+                    // Wait up to 10 seconds for session to become ready
+                    for (let i = 0; i < 10; i++) {
+                        await new Promise(r => setTimeout(r, 1000));
+                        clientData = clients[businessId];
+                        if (clientData?.status === "ready") break;
+                    }
+                }
+
+                if (!clientData || clientData.status !== "ready") {
+                    throw new Error("WhatsApp session not ready (after recovery attempt)");
+                }
+            }
+
+            const sock = clientData.sock;
+
+            // 🔗 Variable Replacement Logic
+            let processedText = text;
+            if (variables && typeof variables === 'object') {
+                processedText = text.replace(/{{(\w+)}}/g, (match, key) => {
+                    return variables[key] !== undefined ? variables[key] : match;
+                });
+            }
+
+            // ✅ Baileys JID format
+            const jid = recipient.includes("@s.whatsapp.net")
+                ? recipient
+                : `${recipient.replace(/\D/g, "")}@s.whatsapp.net`;
+
             // Fetch campaign for buttons if campaignId exists
             let buttons = [];
             if (campaignId) {
@@ -84,22 +103,18 @@ const worker = new Worker(
             let messagePayload = { text: processedText };
 
             // 📎 Media from local file
-            // Try resolving relative to server root first (where uploads folder usually is)
             let resolvedPath = filePath ? path.resolve(__dirname, filePath) : null;
-
-            // Fallback: if not found, try as-is (might be absolute or relative to CWD)
             if (resolvedPath && !fs.existsSync(resolvedPath)) {
                 resolvedPath = filePath;
             }
 
             if (resolvedPath && fs.existsSync(resolvedPath)) {
-                console.log(`[WORKER] Found media file at: ${resolvedPath}`);
+                console.log(`[WORKER] Sending media file: ${resolvedPath}`);
                 messagePayload = {
                     image: fs.readFileSync(resolvedPath),
                     caption: processedText,
                 };
             } else if (mediaUrl) {
-                // 🌐 Media from URL (only if local file not found/provided)
                 messagePayload = {
                     image: { url: mediaUrl },
                     caption: processedText,
@@ -109,7 +124,7 @@ const worker = new Worker(
             // Add buttons to payload if any
             if (buttons.length > 0) {
                 messagePayload.buttons = buttons;
-                messagePayload.headerType = mediaUrl || resolvedPath ? 4 : 1; // 4 for image, 1 for text
+                messagePayload.headerType = mediaUrl || resolvedPath ? 4 : 1;
             }
 
             await sock.sendMessage(jid, messagePayload);
@@ -127,14 +142,15 @@ const worker = new Worker(
 
             await Message.create({
                 businessId,
-                campaignId,
+                campaignId: campaignId || null,
                 recipient,
                 content: processedText,
                 status: "sent",
                 sentAt: new Date(),
             });
+
         } catch (error) {
-            console.error(`[WORKER] Failed to send message:`, error.message);
+            console.error(`[WORKER] Major Failure:`, error.message);
 
             if (campaignId) {
                 await Campaign.findByIdAndUpdate(campaignId, {
@@ -142,11 +158,12 @@ const worker = new Worker(
                 });
             }
 
+            // Record the failure in Message collection (important for Outbox)
             await Message.create({
                 businessId,
-                campaignId,
+                campaignId: campaignId || null,
                 recipient,
-                content: processedText,
+                content: text || "N/A",
                 status: "failed",
                 errorMessage: error.message,
             });
