@@ -19,7 +19,7 @@ const AdminSidebar = () => {
     return (
         <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r border-neutral-800 bg-black sm:flex">
             <div className="flex h-16 items-center gap-3 border-b border-neutral-800 px-6">
-                <Shield className="h-6 w-6 text-cyan-400" />
+                <img src="/whatsapp-icon.png" alt="WA" className="w-5 h-5 object-contain" />
                 <span className="text-xl font-bold text-white">Admin Panel</span>
             </div>
             <nav className="flex flex-col flex-grow p-4">

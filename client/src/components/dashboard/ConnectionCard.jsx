@@ -149,7 +149,7 @@ const ConnectionCard = () => {
             toast.success("QR Code ready. Please scan.", {
                 duration: 6000,
             });
-            
+
             // Dismiss the init toast
             toast.dismiss("init-toast");
 
@@ -240,7 +240,8 @@ const ConnectionCard = () => {
     return (
         <div className="bg-black/80 backdrop-blur-sm border border-neutral-800 rounded-2xl p-6 shadow-lg">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-white ">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <img src="/whatsapp-icon.png" alt="WA" className="w-6 h-6 object-contain" />
                     Connection{" "}
                     <span className="bg-clip-text text-transparent bg-gradient-to-br from-cyan-400 to-indigo-500">
                         Status

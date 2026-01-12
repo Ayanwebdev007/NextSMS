@@ -67,8 +67,8 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                     { label: "Total Businesses", value: kpis.totalUsers, icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
-                    { label: "Active Sessions", value: kpis.activeSessions, icon: Zap, color: "text-yellow-400", bg: "bg-yellow-400/10" },
-                    { label: "Total Messages", value: kpis.totalSent, icon: MessageSquare, color: "text-green-400", bg: "bg-green-400/10" },
+                    { label: "Active Sessions", value: kpis.activeSessions, image: "/whatsapp-icon.png", color: "text-green-400", bg: "bg-green-500/10" },
+                    { label: "Total Messages", value: kpis.totalSent, image: "/whatsapp-icon.png", color: "text-green-400", bg: "bg-green-500/10" },
                     { label: "Campaigns Run", value: kpis.totalCampaigns, icon: Target, color: "text-purple-400", bg: "bg-purple-400/10" }
                 ].map((kpi, idx) => (
                     <div key={idx} className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl relative overflow-hidden group hover:border-neutral-700 transition-all">
@@ -78,7 +78,11 @@ const AdminDashboard = () => {
                                 <h3 className="text-3xl font-black text-white mt-1">{kpi.value.toLocaleString()}</h3>
                             </div>
                             <div className={`${kpi.bg} ${kpi.color} p-3 rounded-xl`}>
-                                <kpi.icon size={24} />
+                                {kpi.image ? (
+                                    <img src={kpi.image} alt="WA" className="w-6 h-6 object-contain" />
+                                ) : (
+                                    <kpi.icon size={24} />
+                                )}
                             </div>
                         </div>
                         <div className="mt-4 flex items-center gap-1 text-[10px] font-bold text-green-400 uppercase tracking-tighter">
@@ -171,7 +175,7 @@ const AdminDashboard = () => {
                         <div key={log._id} className="p-4 flex items-center justify-between hover:bg-neutral-800/30 transition-colors">
                             <div className="flex items-center gap-4">
                                 <div className={`h-10 w-10 rounded-full flex items-center justify-center text-xs font-bold ${log.event === 'connected' ? 'bg-green-500/10 text-green-400' :
-                                        log.event === 'qr_generated' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'
+                                    log.event === 'qr_generated' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'
                                     }`}>
                                     {log.event.charAt(0).toUpperCase()}
                                 </div>

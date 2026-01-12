@@ -293,12 +293,10 @@ const ManageBusinessesPage = () => {
           <div className="bg-neutral-900 border border-neutral-800 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
             <div className="bg-neutral-950 p-6 border-b border-neutral-800 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="bg-yellow-500/10 p-2 rounded-lg">
-                  <BarChart3 className="text-yellow-400" size={24} />
-                </div>
+                <img src="/whatsapp-icon.png" alt="WA" className="w-10 h-10 object-contain" />
                 <div>
-                  <h3 className="text-xl font-bold text-white">Business Activity Insights</h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">{selectedBusiness?.name}'s live performance & history</p>
+                  <h3 className="text-xl font-bold text-white uppercase tracking-tight">Business Activity Insights</h3>
+                  <p className="text-xs text-neutral-400">{selectedBusiness?.name}'s live performance & history</p>
                 </div>
               </div>
               <button onClick={() => setIsActivityModalOpen(false)} className="text-neutral-500 hover:text-white p-2">

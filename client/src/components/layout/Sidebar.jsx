@@ -172,7 +172,7 @@ const AppSidebarContent = () => {
 
   const navLinks = [
     { label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard /> },
-    { label: "Send Message", path: "/dashboard/send", icon: <MessageSquare /> },
+    { label: "Send Message", path: "/dashboard/send", icon: <img src="/whatsapp-icon.png" alt="WA" className="w-5 h-5 object-contain" /> },
     { label: "Campaigns", path: "/dashboard/campaigns", icon: <Rocket /> },
     { label: "Outbox", path: "/dashboard/outbox", icon: <Box /> },
     { label: "REST API", path: "/dashboard/api", icon: <Plug /> },
