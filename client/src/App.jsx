@@ -33,6 +33,7 @@ import ManageBusinessesPage from "./pages/admin/ManageBusinessPage";
 import ManagePlansPage from "./pages/admin/ManagePlansPage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import ManageSubmissionsPage from "./pages/admin/ManageSubmissions";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import HelpPage from "./pages/HelpPage";
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsPage from "./pages/TermsPage";
@@ -92,6 +93,10 @@ function App() {
 
             <Route element={<AdminProtectedRoute />}>
               <Route element={<AdminLayout />}>
+                <Route
+                  path="/admin"
+                  element={<AdminDashboard />}
+                />
                 <Route
                   path="/admin/businesses"
                   element={<ManageBusinessesPage />}

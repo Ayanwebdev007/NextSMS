@@ -121,3 +121,69 @@ export const getBusinessActivity = asyncHandler(async (req, res) => {
         connectivityHistory
     });
 });
+
+export const getAdminDashboardStats = asyncHandler(async (req, res) => {
+    // 1. Core KPIs
+    const totalUsers = await Business.countDocuments();
+    const totalCampaigns = await Campaign.countDocuments();
+    const activeSessions = await Business.countDocuments({ sessionStatus: 'connected' });
+
+    const globalMessageStats = await Campaign.aggregate([
+        {
+            $group: {
+                _id: null,
+                totalSent: { $sum: "$sentCount" },
+                totalFailed: { $sum: "$failedCount" }
+            }
+        }
+    ]);
+
+    // 2. Message Trends (Last 7 Days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const messageTrends = await Campaign.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+            $group: {
+                _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                sent: { $sum: "$sentCount" },
+                failed: { $sum: "$failedCount" }
+            }
+        },
+        { $sort: { "_id": 1 } }
+    ]);
+
+    // 3. User Growth (Last 7 Days)
+    const userGrowth = await Business.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+            $group: {
+                _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { "_id": 1 } }
+    ]);
+
+    // 4. Global Recent Activity
+    const recentActivity = await Activity.find({})
+        .populate('businessId', 'name')
+        .sort({ createdAt: -1 })
+        .limit(8);
+
+    res.status(200).json({
+        kpis: {
+            totalUsers,
+            totalCampaigns,
+            activeSessions,
+            totalSent: globalMessageStats[0]?.totalSent || 0,
+            totalFailed: globalMessageStats[0]?.totalFailed || 0
+        },
+        trends: {
+            messages: messageTrends,
+            growth: userGrowth
+        },
+        recentActivity
+    });
+});

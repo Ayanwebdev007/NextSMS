@@ -26,6 +26,16 @@ const AdminSidebar = () => {
                 <ul className="flex flex-col gap-1 flex-grow">
                     <li>
                         <NavLink
+                            to="/admin"
+                            end
+                            className={({ isActive }) => `${baseLinkClass} ${isActive ? activeLinkClass : ''}`}
+                        >
+                            <LayoutDashboard className="h-5 w-5" />
+                            System Dashboard
+                        </NavLink>
+                    </li>
+                    <li>
+                        <NavLink
                             to="/admin/businesses"
                             className={({ isActive }) => `${baseLinkClass} ${isActive ? activeLinkClass : ''}`}
                         >

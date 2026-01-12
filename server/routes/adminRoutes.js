@@ -1,5 +1,5 @@
 import express from 'express';
-import { getAllBusinesses, getContactSubmissions, updateBusinessStatus, updateBusinessCredits, getBusinessActivity } from '../controllers/adminController.js';
+import { getAllBusinesses, getContactSubmissions, updateBusinessStatus, updateBusinessCredits, getBusinessActivity, getAdminDashboardStats } from '../controllers/adminController.js';
 import { createPlan, getAllPlans, updatePlan } from '../controllers/planController.js'; // Moved from planRoutes
 import { protectAdmin } from '../middlewares/adminAuth.js';
 
@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.use(protectAdmin);
 
+router.get('/dashboard-stats', getAdminDashboardStats);
 
 router.get('/businesses', getAllBusinesses);
 
