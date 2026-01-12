@@ -11,10 +11,11 @@ router.use(protectAdmin);
 router.get('/businesses', getAllBusinesses);
 
 router.put('/businesses/:id', updateBusinessStatus);
+router.put('/businesses/:id/credits', updateBusinessCredits);
 
 
 router.route('/plans')
-    .get(getAllPlans)    
+    .get(getAllPlans)
     .post(createPlan)
 
 router.route('/plans/:id').put(updatePlan)

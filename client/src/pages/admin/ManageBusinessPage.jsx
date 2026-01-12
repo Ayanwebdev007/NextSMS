@@ -12,6 +12,7 @@ const ManageBusinessesPage = () => {
   const [businesses, setBusinesses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isUpdatingCredits, setIsUpdatingCredits] = useState(null);
 
   const fetchBusinesses = useCallback(async () => {
     setIsLoading(true);
@@ -41,6 +42,21 @@ const ManageBusinessesPage = () => {
       fetchBusinesses();
     } catch {
       toast.error("Failed to update status.", { id: toastId });
+    }
+  };
+
+  const handleUpdateCredits = async (businessId, currentCredits) => {
+    const newCredits = prompt("Enter new credit amount:", currentCredits);
+    if (newCredits === null || newCredits === "" || isNaN(newCredits)) return;
+
+    const toastId = toast.loading("Updating credits...");
+    try {
+      const api = createAuthenticatedApi(token);
+      await api.put(`/admin/businesses/${businessId}/credits`, { credits: parseInt(newCredits) });
+      toast.success("Credits updated!", { id: toastId });
+      fetchBusinesses();
+    } catch {
+      toast.error("Failed to update credits.", { id: toastId });
     }
   };
 
@@ -75,6 +91,7 @@ const ManageBusinessesPage = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Status</th>
                 {/* --- NEW TABLE HEADERS --- */}
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Current Plan</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Credits</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Plan Expiry</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Action</th>
               </tr>
@@ -85,13 +102,21 @@ const ManageBusinessesPage = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{business.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">{business.email}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${ business.status === "active" ? "bg-green-900 text-green-300" : business.status === "suspended" ? "bg-red-900 text-red-300" : "bg-yellow-900 text-yellow-300" }`}>
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${business.status === "active" ? "bg-green-900 text-green-300" : business.status === "suspended" ? "bg-red-900 text-red-300" : "bg-yellow-900 text-yellow-300"}`}>
                       {business.status}
                     </span>
                   </td>
                   {/* --- NEW TABLE DATA CELLS --- */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300 font-medium">
                     {business.plan ? business.plan.name : <span className="text-neutral-500">Trial</span>}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">
+                    <button
+                      onClick={() => handleUpdateCredits(business._id, business.credits)}
+                      className="text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      {business.credits}
+                    </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-400">
                     {business.planExpiry ? new Date(business.planExpiry).toLocaleDateString('en-IN') : <span className="text-neutral-500">N/A</span>}

@@ -33,3 +33,23 @@ export const getContactSubmissions = asyncHandler(async (req, res) => {
     const submissions = await ContactSubmission.find({}).sort({ createdAt: -1 }); // Get newest first
     res.status(200).json(submissions);
 });
+
+export const updateBusinessCredits = asyncHandler(async (req, res) => {
+    const { credits, planExpiry } = req.body;
+    const business = await Business.findById(req.params.id);
+
+    if (business) {
+        if (credits !== undefined) business.credits = credits;
+        if (planExpiry !== undefined) business.planExpiry = new Date(planExpiry);
+
+        await business.save();
+        res.status(200).json({
+            message: "Credits and expiry updated successfully",
+            credits: business.credits,
+            planExpiry: business.planExpiry
+        });
+    } else {
+        res.status(404);
+        throw new Error('Business not found');
+    }
+});
