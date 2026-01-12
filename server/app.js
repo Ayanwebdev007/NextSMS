@@ -63,6 +63,19 @@ app.use('/api/media', mediaRoutes);
 // Other payment routes
 app.use('/api/payment', paymentRoutes);
 
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('SERVER ERROR:', err);
+  // Ensure CORS headers are present even on errors
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal Server Error',
+    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log('listening on port', PORT);

@@ -4,8 +4,7 @@ import asyncHandler from 'express-async-handler';
 import { Business } from '../models/business.model.js';
 import { OAuth2Client } from 'google-auth-library';
 
-// This needs to be initialized to be used in the Google login function
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+// googleClient will be initialized inside the handler to ensure env vars are loaded
 
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -13,7 +12,7 @@ const generateToken = (id) => {
 
 export const register = asyncHandler(async (req, res) => {
     const { name, email, password, phone } = req.body;
-    
+
     if (!name || !email || !password) {
         return res.status(400).json({ message: 'Name, email, and password are required fields.' });
     }
@@ -22,7 +21,7 @@ export const register = asyncHandler(async (req, res) => {
     if (businessExists) {
         return res.status(409).json({ message: 'A business with this email already exists.' });
     }
-    
+
     let userRole = 'user';
     if (email.toLowerCase() === process.env.ADMIN_EMAIL?.toLowerCase()) {
         userRole = 'admin';
@@ -30,7 +29,7 @@ export const register = asyncHandler(async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    
+
     // --- THIS IS THE NEW TRIAL PLAN LOGIC ---
     // 1. Calculate the expiry date for the trial (30 days from now)
     const trialExpiryDate = new Date();
@@ -43,7 +42,7 @@ export const register = asyncHandler(async (req, res) => {
         password: hashedPassword,
         role: userRole,
         credits: 50, // 2. Assign 50 trial credits to every new user
-        planExpiry: trialExpiryDate 
+        planExpiry: trialExpiryDate
     });
 
     if (business) {
@@ -85,10 +84,21 @@ export const handleGoogleLogin = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Google credential token is required.' });
     }
 
-    const ticket = await googleClient.verifyIdToken({
-        idToken: credential,
-        audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+    let ticket;
+    try {
+        ticket = await client.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+    } catch (error) {
+        console.error('Google Token Verification Error:', error.message);
+        return res.status(401).json({
+            message: 'Google token verification failed.',
+            error: error.message
+        });
+    }
 
     const { name, email, sub: googleId } = ticket.getPayload();
     let business = await Business.findOne({ googleId });
