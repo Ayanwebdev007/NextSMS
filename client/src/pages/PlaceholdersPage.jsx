@@ -84,8 +84,8 @@ const PlaceholdersPage = () => {
                 Back to Dashboard
             </button>
 
-            <div className="max-w-6xl mx-auto">
-                <div className="mb-12 text-center">
+            <div className="max-w-6xl">
+                <div className="mb-12">
                     <div className="inline-flex p-3 bg-cyan-500/10 rounded-2xl mb-4 border border-cyan-500/20 shadow-lg shadow-cyan-500/5">
                         <Braces className="text-cyan-400" size={32} />
                     </div>
@@ -95,7 +95,7 @@ const PlaceholdersPage = () => {
                             Placeholders
                         </span>
                     </h1>
-                    <p className="text-neutral-400 max-w-lg mx-auto leading-relaxed">
+                    <p className="text-neutral-400 max-w-lg leading-relaxed">
                         Centrally manage your personalization tags. Use them in messages as <code className="text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">{"{{Tag}}"}</code>.
                     </p>
                 </div>
