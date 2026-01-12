@@ -10,6 +10,7 @@ const ConnectionCard = () => {
     const [status, setStatus] = useState("loading");
     const statusRef = useRef(status);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [qrCodeUrl, setQrCodeUrl] = useState("");
     const [isActionLoading, setIsActionLoading] = useState(false);
     const pollingInterval = useRef(null);
@@ -278,7 +279,7 @@ const ConnectionCard = () => {
                 )}
                 {status === "qr_pending" && (
                     <button
-                        onClick={() => handleDisconnect(true)}
+                        onClick={() => setIsConfirmModalOpen(true)}
                         disabled={isActionLoading}
                         className="flex-1 text-center font-bold text-white bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-lg transition-colors"
                     >
@@ -287,7 +288,7 @@ const ConnectionCard = () => {
                 )}
                 {status === "connected" && (
                     <button
-                        onClick={() => handleDisconnect(true)}
+                        onClick={() => setIsConfirmModalOpen(true)}
                         disabled={isActionLoading}
                         className="flex-1 text-center font-bold text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
                     >
@@ -314,6 +315,36 @@ const ConnectionCard = () => {
                     Scan this with WhatsApp on your phone from Settings &gt;
                     Linked Devices.
                 </p>
+            </Modal>
+
+            <Modal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+            >
+                <div className="text-center p-4">
+                    <WifiOff size={48} className="mx-auto text-red-500 mb-4" />
+                    <h3 className="text-xl font-bold text-white mb-2">Are you sure?</h3>
+                    <p className="text-neutral-400 mb-6 px-4">
+                        Disconnecting will stop all active campaigns and you will need to scan the QR code again to reconnect.
+                    </p>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => setIsConfirmModalOpen(false)}
+                            className="flex-1 py-2 font-bold text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-all"
+                        >
+                            No, Keep it
+                        </button>
+                        <button
+                            onClick={async () => {
+                                setIsConfirmModalOpen(false);
+                                await handleDisconnect(true);
+                            }}
+                            className="flex-1 py-2 font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all"
+                        >
+                            Yes, Disconnect
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

@@ -155,10 +155,14 @@ const initializeClient = async (businessId) => {
             });
 
             const isLogout = statusCode === DisconnectReason.loggedOut;
+            const isManual = clients[businessId]?.manualDisconnect;
+
             await Activity.create({
                 businessId,
                 event: isLogout ? 'auth_failure' : 'disconnected',
-                details: `Disconnected with code: ${code}. ${isLogout ? 'Session logged out.' : 'Attempting reconnect...'}`
+                details: isManual
+                    ? 'Session closed following manual disconnect request'
+                    : `Automatic disconnection: ${code}. ${isLogout ? 'Session logged out.' : 'Attempting reconnect...'}`
             });
 
             /* AUTO RECONNECT (NOT LOGOUT) */
@@ -229,25 +233,32 @@ export const disconnectSession = asyncHandler(async (req, res) => {
     const businessId = req.business._id.toString();
     const client = clients[businessId];
 
-    if (client?.sock) {
-        try {
-            await client.sock.logout();
-        } catch (e) {
-            console.warn(
-                `[LOGOUT] Error during logout for ${businessId}:`,
-                e?.message
-            );
+    if (client) {
+        client.manualDisconnect = true;
+        if (client.sock) {
+            try {
+                await client.sock.logout();
+            } catch (e) {
+                console.warn(
+                    `[LOGOUT] Error during logout for ${businessId}:`,
+                    e?.message
+                );
+            }
         }
+        delete clients[businessId];
     }
 
-    delete clients[businessId];
     initializing.delete(businessId);
-
-    // Ensure auth is fully cleared so next connect requires QR
     deleteSessionFolder(businessId);
 
     await Business.findByIdAndUpdate(businessId, {
         sessionStatus: "disconnected",
+    });
+
+    await Activity.create({
+        businessId,
+        event: 'disconnected',
+        details: 'Manual disconnection: User opted to disconnect the session'
     });
 
     res.json({ message: "Disconnected successfully" });
