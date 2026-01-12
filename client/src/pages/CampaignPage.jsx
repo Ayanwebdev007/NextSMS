@@ -23,7 +23,9 @@ import {
   Wifi,
   WifiOff,
   Braces,
+  Trash2,
   Plus,
+  CalendarClock
 } from "lucide-react";
 
 const ToggleSwitch = ({ enabled, setEnabled }) => (
