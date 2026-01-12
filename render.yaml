@@ -39,5 +39,7 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+      - key: VITE_RAZORPAY_KEY_ID
+        sync: false
 
 
