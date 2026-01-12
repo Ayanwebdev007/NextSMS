@@ -36,7 +36,13 @@ const campaignSchema = new mongoose.Schema({
 
     // Anti-ban settings
     minDelay: { type: Number, default: 4000 },
-    maxDelay: { type: Number, default: 10000 }
+    maxDelay: { type: Number, default: 10000 },
+
+    // Interactive Buttons
+    buttons: [{
+        text: { type: String, required: true },
+        reply: { type: String, required: true }
+    }]
 }, { timestamps: true });
 
 export const Campaign = mongoose.model('Campaign', campaignSchema);

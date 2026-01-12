@@ -6,7 +6,7 @@ import { messageQueue } from '../workers/queue.js';
 
 export const startCampaign = asyncHandler(async (req, res) => {
     // It correctly accepts the pre-calculated 'delay' from the frontend.
-    const { name, recipients, message, filePath, scheduledAt, delay, minDelay, maxDelay } = req.body;
+    const { name, recipients, message, filePath, scheduledAt, delay, minDelay, maxDelay, buttons } = req.body;
     const businessId = req.business._id;
 
     if (!name || !recipients || !message || !Array.isArray(recipients) || recipients.length === 0) {
@@ -29,7 +29,8 @@ export const startCampaign = asyncHandler(async (req, res) => {
         status: campaignStatus,
         scheduledAt: scheduledAt || null,
         minDelay: minDelay || 4000,
-        maxDelay: maxDelay || 10000
+        maxDelay: maxDelay || 10000,
+        buttons: buttons || []
     });
 
     const jobOptions = {};

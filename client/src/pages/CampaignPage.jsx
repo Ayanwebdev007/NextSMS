@@ -46,14 +46,16 @@ const CampaignsPage = () => {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
+      campaignName: "",
       message: ""
     }
   });
 
-  const messageText = watch("message");
+  const messageValue = watch("message");
   const navigate = useNavigate();
 
   const [recipientCount, setRecipientCount] = useState(0);
@@ -71,6 +73,25 @@ const CampaignsPage = () => {
   const [speed, setSpeed] = useState("safe"); // express, safe, ultra-safe
   const [globalPlaceholders, setGlobalPlaceholders] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [buttons, setButtons] = useState([]); // Array of { text, reply }
+
+  const addButton = () => {
+    if (buttons.length >= 3) {
+      toast.error("Maximum 3 buttons allowed");
+      return;
+    }
+    setButtons([...buttons, { text: "", reply: "" }]);
+  };
+
+  const removeButton = (index) => {
+    setButtons(buttons.filter((_, i) => i !== index));
+  };
+
+  const updateButton = (index, field, value) => {
+    const newButtons = [...buttons];
+    newButtons[index][field] = value;
+    setButtons(newButtons);
+  };
 
   const fetchPlaceholders = async () => {
     try {
@@ -222,7 +243,8 @@ const CampaignsPage = () => {
         scheduledAt: isScheduled ? new Date(scheduledAt).toISOString() : null,
         delay: delay > 0 ? delay : 0,
         minDelay,
-        maxDelay
+        maxDelay,
+        buttons: buttons.filter(b => b.text && b.reply) // Send only complete buttons
       });
 
       const successMessage = isScheduled
@@ -317,6 +339,17 @@ const CampaignsPage = () => {
               {/* Bubble Tail */}
               <div className="absolute top-0 -right-1.5 w-0 h-0 border-t-[10px] border-t-[#005c4b] border-r-[10px] border-r-transparent"></div>
             </div>
+
+            {/* Interactive Buttons Preview */}
+            {buttons.length > 0 && (
+              <div className="flex flex-col gap-1.5 ml-auto w-[90%] -mt-2">
+                {buttons.map((btn, idx) => (
+                  <div key={idx} className="bg-[#202c33] border border-neutral-700/30 text-cyan-400 text-[11px] font-bold py-2 rounded-lg text-center shadow-lg backdrop-blur-sm">
+                    {btn.text || "Button Label"}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {recipients.length > 0 && (
               <div className="mx-auto text-center bg-black/40 backdrop-blur-md rounded px-2 py-1 absolute bottom-4 left-0 right-0">
@@ -525,6 +558,63 @@ const CampaignsPage = () => {
                   {errors.message.message}
                 </p>
               )}
+            </div>
+
+            <div className="pt-6 border-t border-neutral-800">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <Label>Interactive Buttons (Optional)</Label>
+                  <p className="text-[10px] text-neutral-500">Tapping a button sends an auto-reply back.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addButton}
+                  className="text-xs flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                >
+                  <Plus size={14} /> Add Button
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {buttons.map((btn, index) => (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={index}
+                    className="p-4 bg-neutral-900/30 border border-neutral-800 rounded-xl relative group"
+                  >
+                    <button
+                      onClick={() => removeButton(index)}
+                      className="absolute top-3 right-3 text-neutral-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] text-neutral-500 uppercase font-black tracking-widest mb-1.5 block">Button Label</label>
+                        <Input
+                          placeholder="e.g. Yes, I'm in!"
+                          value={btn.text}
+                          onChange={(e) => updateButton(index, "text", e.target.value)}
+                          className="text-sm h-10 border-neutral-800 focus:border-cyan-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-neutral-500 uppercase font-black tracking-widest mb-1.5 block">Auto-Reply Message</label>
+                        <Input
+                          placeholder="What message should they get?"
+                          value={btn.reply}
+                          onChange={(e) => updateButton(index, "reply", e.target.value)}
+                          className="text-sm h-10 border-neutral-800 focus:border-cyan-500/50"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+                {buttons.length === 0 && (
+                  <p className="text-[10px] text-neutral-600 italic">No buttons added to this message.</p>
+                )}
+              </div>
             </div>
 
             <div className="pt-6 border-t border-neutral-800">

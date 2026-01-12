@@ -68,6 +68,19 @@ const worker = new Worker(
             : `${recipient.replace(/\D/g, "")}@s.whatsapp.net`;
 
         try {
+            // Fetch campaign for buttons if campaignId exists
+            let buttons = [];
+            if (campaignId) {
+                const campaign = await Campaign.findById(campaignId);
+                if (campaign && campaign.buttons && campaign.buttons.length > 0) {
+                    buttons = campaign.buttons.map((btn, index) => ({
+                        buttonId: `${campaignId}_${index}`,
+                        buttonText: { displayText: btn.text },
+                        type: 1
+                    }));
+                }
+            }
+
             let messagePayload = { text: processedText };
 
             // 📎 Media from local file
@@ -91,6 +104,12 @@ const worker = new Worker(
                     image: { url: mediaUrl },
                     caption: processedText,
                 };
+            }
+
+            // Add buttons to payload if any
+            if (buttons.length > 0) {
+                messagePayload.buttons = buttons;
+                messagePayload.headerType = mediaUrl || resolvedPath ? 4 : 1; // 4 for image, 1 for text
             }
 
             await sock.sendMessage(jid, messagePayload);

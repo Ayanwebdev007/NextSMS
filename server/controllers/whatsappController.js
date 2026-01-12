@@ -140,6 +140,47 @@ const initializeClient = async (businessId) => {
             });
         }
 
+        /* -------- MESSAGES (Auto-Responder) -------- */
+        sock.ev.on("messages.upsert", async ({ messages, type }) => {
+            if (type !== "notify") return;
+
+            for (const msg of messages) {
+                if (!msg.message || msg.key.fromMe) continue;
+
+                const buttonResponse = msg.message.buttonsResponseMessage;
+                if (buttonResponse) {
+                    const selectedId = buttonResponse.selectedButtonId;
+                    const sender = msg.key.remoteJid;
+
+                    // The ID is stored in the format "campaignId_buttonIndex"
+                    if (selectedId && selectedId.includes('_')) {
+                        const [campaignId, buttonIndex] = selectedId.split('_');
+
+                        try {
+                            const { Campaign } = await import("../models/campaign.model.js");
+                            const campaign = await Campaign.findById(campaignId);
+
+                            if (campaign && campaign.buttons && campaign.buttons[buttonIndex]) {
+                                const replyText = campaign.buttons[buttonIndex].reply;
+
+                                console.log(`[AUTO-REPLY] Sending to ${sender} for campaign ${campaignId}`);
+                                await sock.sendMessage(sender, { text: replyText });
+
+                                // Log activity
+                                await Activity.create({
+                                    businessId,
+                                    event: 'auto_reply_sent',
+                                    details: `Sent auto-reply to ${sender} for ${campaign.name}`
+                                });
+                            }
+                        } catch (err) {
+                            console.error("[AUTO-REPLY] Error:", err.message);
+                        }
+                    }
+                }
+            }
+        });
+
         /* -------- DISCONNECTED -------- */
         if (connection === "close") {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
