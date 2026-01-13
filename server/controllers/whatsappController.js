@@ -289,7 +289,7 @@ export const initializeClient = async (businessId) => {
 export const connectSession = asyncHandler(async (req, res) => {
     const businessId = req.business._id.toString();
 
-    // Force a Hard Reset for NEW connections
+    // Check if already connected
     if (clients[businessId]) {
         if (clients[businessId].status === "ready") {
             return res.status(409).json({ message: "Session already connected" });
@@ -301,8 +301,14 @@ export const connectSession = asyncHandler(async (req, res) => {
         delete clients[businessId];
     }
 
-    // Wipe folder to ensure a 100% clean scan
-    deleteSessionFolder(businessId);
+    // ZERO-DELETION POLICY: Do NOT wipe existing session data
+    // Only delete if explicitly requested via query param (e.g., ?fresh=true)
+    if (req.query.fresh === 'true') {
+        console.log(`[CONNECT] Fresh connection requested for ${businessId}. Wiping old session.`);
+        await deleteSessionFolder(businessId);
+    } else {
+        console.log(`[CONNECT] Attempting to restore/reconnect existing session for ${businessId}`);
+    }
 
     initializeClient(businessId);
 

@@ -86,20 +86,25 @@ const server = app.listen(PORT, () => {
 
 // --- Graceful shutdown --- //
 process.on('SIGINT', async () => {
-  console.log('\nSIGINT signal received: Gracefully destroying WhatsApp clients...');
+  console.log('\nSIGINT signal received: Gracefully closing server...');
   server.close(async () => {
     console.log('HTTP server closed.');
-    const destroyPromises = Object.values(clients).map((clientData) => {
-      if (clientData && clientData.instance) {
-        console.log(`Destroying client for business...`);
-        // Using .destroy() will close the connection but PRESERVE the auth files for restoration.
-        return clientData.instance.logout();
+
+    // ZERO-DELETION POLICY: Do NOT logout or destroy WhatsApp clients on restart
+    // Sessions are persisted in MongoDB and will be restored on next startup
+    Object.values(clients).forEach((clientData) => {
+      if (clientData && clientData.sock) {
+        console.log(`Preserving WhatsApp session for next restart...`);
+        // Just end the socket connection gracefully, but keep auth data
+        try {
+          clientData.sock.end();
+        } catch (e) {
+          // Ignore errors during shutdown
+        }
       }
-      return Promise.resolve();
     });
 
-    await Promise.all(destroyPromises);
-    console.log('All WhatsApp clients destroyed.');
+    console.log('All WhatsApp sessions preserved. Ready for restart.');
     process.exit(0);
   });
 });
