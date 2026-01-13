@@ -6,10 +6,10 @@ import cors from 'cors';
 import connectDB from './db/db.js';
 import { clients, restoreSessions } from './controllers/whatsappController.js';
 import { handleWebhook } from './controllers/paymentController.js';
-import './worker.js'
 
-connectDB().then(() => {
-  restoreSessions();
+connectDB().then(async () => {
+  await restoreSessions();
+  startWorker();
 });
 const app = express();
 const corsOptions = {

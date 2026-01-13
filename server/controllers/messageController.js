@@ -1,5 +1,6 @@
 import asyncHandler from "express-async-handler";
 import { Business } from "../models/business.model.js";
+import { Message } from "../models/message.model.js";
 import { messageQueue } from "../workers/queue.js";
 
 export const sendMessage = asyncHandler(async (req, res) => {
@@ -26,7 +27,16 @@ export const sendMessage = asyncHandler(async (req, res) => {
         });
     }
 
+    // Create a 'queued' message record immediately for history tracking
+    const messageRecord = await Message.create({
+        businessId: businessId.toString(),
+        recipient,
+        content: text,
+        status: "queued"
+    });
+
     await messageQueue.add("send-message", {
+        messageId: messageRecord._id.toString(),
         businessId: businessId.toString(),
         recipient,
         text,

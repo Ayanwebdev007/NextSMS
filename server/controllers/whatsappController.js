@@ -1,7 +1,9 @@
 import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
+    makeCacheableSignalKeyStore,
 } from "@whiskeysockets/baileys";
+import pino from "pino";
 
 import asyncHandler from "express-async-handler";
 import { Business } from "../models/business.model.js";
@@ -86,12 +88,18 @@ export const initializeClient = async (businessId) => {
     const sessionPath = getSessionPath(businessId);
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
+    const logger = pino({ level: "silent" }); // Set to "debug" or "info" if more logs needed
+
     const sock = makeWASocket({
-        auth: state,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, logger),
+        },
         printQRInTerminal: false,
         syncFullHistory: false,
         markOnlineOnConnect: false,
         browser: ["NextSMS", "Chrome", "1.0"],
+        logger,
     });
 
     clients[businessId] = {
