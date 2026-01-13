@@ -8,54 +8,108 @@ import qrcode from "qrcode";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { SessionStore } from "../models/sessionStore.model.js";
+import { BufferJSON } from "@whiskeysockets/baileys"; // Need BufferJSON to serialize/deserialize
 
 export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
 
 /* =======================
-   AUTH PATH
+   DB AUTH HELPERS
 ======================= */
-const AUTH_PATH =
-    process.env.NODE_ENV === "production" ? path.join(os.tmpdir(), "baileys_auth") : path.resolve("./.baileys_auth");
+const useMongoDBAuthState = async (businessId) => {
+    // 1. Initial Read
+    let creds;
+    const existingSession = await SessionStore.findOne({ businessId });
 
-if (!fs.existsSync(AUTH_PATH)) {
-    fs.mkdirSync(AUTH_PATH, { recursive: true });
-}
-
-/* =======================
-   AUTH HELPERS
-======================= */
-const getSessionPath = (businessId) => path.join(AUTH_PATH, businessId);
-
-const deleteSessionFolder = (businessId) => {
-    const sessionPath = getSessionPath(businessId);
-    if (fs.existsSync(sessionPath)) {
-        // console.log(`[AUTH] Deleting auth folder for ${businessId}`);
-        fs.rmSync(sessionPath, { recursive: true, force: true });
+    if (existingSession && existingSession.data && existingSession.data.creds) {
+        // Deserialize JSON back to Buffers
+        creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
+    } else {
+        // Init state but don't save yet
+        const { state } = await useMultiFileAuthState(getSessionPath(businessId));
+        // Note: For true DB-only we'd manually init creds here, but we can reuse Baileys init logic partially
+        // Actually, let's implement true DB logic to avoid FS dependency entirely:
+        creds = (await import("@whiskeysockets/baileys")).initAuthCreds();
     }
+
+    // 2. Save Function
+    const saveCreds = () => {
+        return SessionStore.findOneAndUpdate(
+            { businessId },
+            {
+                $set: {
+                    "data.creds": JSON.parse(JSON.stringify(creds, BufferJSON.replacer))
+                }
+            },
+            { upsert: true, new: true }
+        );
+    };
+
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const session = await SessionStore.findOne({ businessId });
+                    const data = {};
+                    if (session?.data?.[type]) {
+                        for (const id of ids) {
+                            const val = session.data[type][id];
+                            if (val) {
+                                data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
+                            }
+                        }
+                    }
+                    return data;
+                },
+                set: async (data) => {
+                    const session = await SessionStore.findOne({ businessId });
+                    const currentData = session?.data || {};
+
+                    for (const type in data) {
+                        if (!currentData[type]) currentData[type] = {};
+                        for (const id in data[type]) {
+                            const val = data[type][id];
+                            if (val) {
+                                currentData[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                            } else {
+                                delete currentData[type][id];
+                            }
+                        }
+                    }
+
+                    await SessionStore.findOneAndUpdate(
+                        { businessId },
+                        { $set: { data: currentData } },
+                        { upsert: true }
+                    );
+                }
+            }
+        },
+        saveCreds
+    };
+};
+
+// Obsolete file helpers replaced by DB logic
+const getSessionPath = (businessId) => path.join(AUTH_PATH, businessId); // Kept for temp init if needed
+const deleteSessionFolder = async (businessId) => {
+    await SessionStore.deleteOne({ businessId });
+    // Cleanup local FS just in case
+    const sessionPath = getSessionPath(businessId);
+    if (fs.existsSync(sessionPath)) fs.rmSync(sessionPath, { recursive: true, force: true });
 };
 
 /* =======================
-   CLEAN BROKEN SESSION
+   CLEAN BROKEN SESSION (DB)
 ======================= */
-const cleanBrokenSession = (businessId) => {
-    const sessionPath = getSessionPath(businessId);
-    const credsPath = path.join(sessionPath, "creds.json");
-
-    if (fs.existsSync(sessionPath)) {
-        if (!fs.existsSync(credsPath)) {
-            console.warn(`[CLEANUP] Missing creds.json for ${businessId}. Wiping corrupted folder.`);
-            fs.rmSync(sessionPath, { recursive: true, force: true });
-        } else {
-            // Check if JSON is valid to prevent Baileys from crashing on load
-            try {
-                const content = fs.readFileSync(credsPath, 'utf-8');
-                JSON.parse(content);
-            } catch (err) {
-                console.error(`[CLEANUP] Corrupted creds.json for ${businessId}. Resetting...`);
-                fs.rmSync(sessionPath, { recursive: true, force: true });
-            }
-        }
+const cleanBrokenSession = async (businessId) => {
+    // ZERO DELETION POLICY: We intentionally do NOT delete the session even if it looks empty.
+    // The user must manually disconnect.
+    const session = await SessionStore.findOne({ businessId });
+    if (session && (!session.data || !session.data.creds)) {
+        console.warn(`[CLEANUP] Missing creds in DB for ${businessId}. Retaining record per Zero-Deletion policy.`);
+        // await SessionStore.deleteOne({ businessId }); // DISABLED
     }
 };
 
@@ -63,17 +117,14 @@ const cleanBrokenSession = (businessId) => {
    RESTORE SESSIONS
 ======================= */
 export const restoreSessions = async () => {
-    // console.log("[SESSION RESTORE] Checking saved Baileys sessions");
+    // console.log("[SESSION RESTORE] Checking saved Baileys sessions in DB");
 
-    if (!fs.existsSync(AUTH_PATH)) return;
+    // Fetch all active sessions from DB
+    const storedSessions = await SessionStore.find({}, '_id businessId');
 
-    const sessions = fs.readdirSync(AUTH_PATH);
-
-    for (const businessId of sessions) {
-        const sessionPath = path.join(AUTH_PATH, businessId);
-        if (!fs.statSync(sessionPath).isDirectory()) continue;
-
-        cleanBrokenSession(businessId);
+    for (const session of storedSessions) {
+        const businessId = session.businessId.toString();
+        // cleanBrokenSession(businessId); // Usually handled by connection logic
         initializeClient(businessId);
     }
 };
@@ -101,8 +152,7 @@ export const initializeClient = async (businessId) => {
     }
 
     try {
-        const sessionPath = getSessionPath(businessId);
-        const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+        const { state, saveCreds } = await useMongoDBAuthState(businessId);
 
         const sock = makeWASocket({
             auth: state,
@@ -172,14 +222,15 @@ export const initializeClient = async (businessId) => {
 
                     setTimeout(() => initializeClient(businessId), delay);
                 } else {
-                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Folder preserved for recovery.`);
+                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Data preserved per Zero-Deletion policy.`);
+                    // ZERO DELETION: Do not delete data. Just stop retrying.
                     delete clients[businessId];
                     initializing.delete(businessId);
 
                     await Activity.create({
                         businessId,
                         event: 'auth_failure',
-                        details: 'Session logged out from phone. Please re-scan.'
+                        details: 'Session logged out from phone. Please reconnect manually if needed.'
                     });
                 }
             }
