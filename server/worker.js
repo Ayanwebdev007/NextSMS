@@ -58,15 +58,16 @@ export const startWorker = async () => {
                     }
                 }
 
-                // 🔍 Session Check & Auto-Recovery
+                // 🔍 Fetch Business & Session Check
+                const business = await Business.findById(businessId);
+                if (!business) throw new Error("Business not found");
+
                 let clientData = clients[businessId];
 
                 if (!clientData || clientData.status !== "ready") {
-                    console.log(`[WORKER] [Job:${job.id}] Session status: ${clientData?.status || 'missing'}. checking DB...`);
-                    const business = await Business.findById(businessId);
+                    console.log(`[WORKER] [Job:${job.id}] Session missing/not ready. Checking auto-restore...`);
 
-                    if (business && business.sessionStatus === "connected") {
-                        console.log(`[WORKER] [Job:${job.id}] DB says connected. Initializing if missing...`);
+                    if (business.sessionStatus === "connected") {
                         const { initializeClient } = await import("./controllers/whatsappController.js");
                         await initializeClient(businessId);
 
@@ -75,7 +76,6 @@ export const startWorker = async () => {
                             await new Promise(r => setTimeout(r, 1000));
                             clientData = clients[businessId];
                             if (clientData?.status === "ready") break;
-                            if (i % 5 === 0) console.log(`[WORKER] [Job:${job.id}] Still waiting for WhatsApp... (${i + 1}s)`);
                         }
                     }
 
@@ -95,10 +95,12 @@ export const startWorker = async () => {
                     });
                 }
 
-                // ✅ Baileys JID format
-                const jid = recipient.includes("@s.whatsapp.net")
-                    ? recipient
-                    : `${recipient.replace(/\D/g, "")}@s.whatsapp.net`;
+                // ✅ Robust JID formatting (Auto-91 for 10-digit numbers)
+                let cleanRecipient = recipient.toString().replace(/\D/g, "");
+                if (cleanRecipient.length === 10) {
+                    cleanRecipient = "91" + cleanRecipient;
+                }
+                const jid = cleanRecipient.includes("@") ? cleanRecipient : `${cleanRecipient}@s.whatsapp.net`;
 
                 // Fetch campaign for buttons if campaignId exists
                 let buttons = [];
@@ -134,13 +136,14 @@ export const startWorker = async () => {
                     };
                 }
 
-                // Add buttons to payload if any
+                // Add buttons to payload if any (Include footer for better compatibility)
                 if (buttons.length > 0) {
                     messagePayload.buttons = buttons;
-                    messagePayload.headerType = mediaUrl || resolvedPath ? 4 : 1;
+                    messagePayload.footer = business.name || "NextSMS";
+                    messagePayload.headerType = (mediaUrl || resolvedPath) ? 4 : 1;
                 }
 
-                console.log(`[WORKER] [Job:${job.id}] Dispatching message to WhatsApp...`);
+                console.log(`[WORKER] [Job:${job.id}] Dispatching message to ${jid} (Auto-formatted)...`);
                 await sock.sendMessage(jid, messagePayload);
                 console.log(`[WORKER] [Job:${job.id}] Message sent to ${recipient}`);
 
