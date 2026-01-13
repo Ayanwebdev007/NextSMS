@@ -6,11 +6,14 @@ import cors from 'cors';
 import connectDB from './db/db.js';
 import { clients, restoreSessions } from './controllers/whatsappController.js';
 import { handleWebhook } from './controllers/paymentController.js';
-import { startWorker } from './worker.js';
-
 connectDB().then(async () => {
   await restoreSessions();
-  startWorker();
+  try {
+    const { startWorker } = await import('./worker.js');
+    await startWorker();
+  } catch (err) {
+    console.error("[CRITICAL] Failed to start worker:", err.message);
+  }
 });
 const app = express();
 const corsOptions = {
@@ -93,4 +96,3 @@ process.on('SIGINT', async () => {
     process.exit(0);
   });
 });
-

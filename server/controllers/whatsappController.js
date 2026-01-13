@@ -291,10 +291,21 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
         });
     }
 
+    // Defensive: If client structure exists but no QR yet, it's still initializing
+    if (client || initializing.has(businessId)) {
+        return res.json({ status: "initializing" });
+    }
+
     const business = await Business.findById(businessId);
-    return res.json({
-        status: business?.sessionStatus || "disconnected",
-    });
+
+    // If DB says qr_pending but memory is empty, the server probably just restarted.
+    // We should return 'initializing' so the UI shows a loader until the QR is regenerated.
+    let status = business?.sessionStatus || "disconnected";
+    if (status === "qr_pending" && !client) {
+        status = "initializing";
+    }
+
+    return res.json({ status });
 });
 
 /* =======================
