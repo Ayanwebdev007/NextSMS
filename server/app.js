@@ -6,6 +6,7 @@ import cors from 'cors';
 import connectDB from './db/db.js';
 import { clients, restoreSessions } from './controllers/whatsappController.js';
 import { handleWebhook } from './controllers/paymentController.js';
+import { startWorker } from './worker.js';
 
 connectDB().then(async () => {
   await restoreSessions();
