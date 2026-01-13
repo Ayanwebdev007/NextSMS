@@ -27,4 +27,5 @@ export const startKeepAlive = () => {
     }, 60000);
 
     console.log('[KEEP-ALIVE] Self-ping mechanism started. Will ping every 10 minutes.');
+    // Session persistence test: This deployment should restore the session from MongoDB
 };
