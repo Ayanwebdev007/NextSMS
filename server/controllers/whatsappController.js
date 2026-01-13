@@ -2,6 +2,7 @@ import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
     makeCacheableSignalKeyStore,
+    Browsers,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 
@@ -111,11 +112,11 @@ export const initializeClient = async (businessId) => {
             printQRInTerminal: false,
             syncFullHistory: false,
             markOnlineOnConnect: true,
-            browser: ["NextSMS", "Chrome", "1.0"],
+            browser: Browsers.macOS("Desktop"),
             logger,
-            defaultQueryTimeoutMs: 60000,
-            connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 15000,
+            defaultQueryTimeoutMs: 20000,
+            connectTimeoutMs: 20000,
+            keepAliveIntervalMs: 30000,
             generateHighQualityLinkPreview: false,
         });
 
