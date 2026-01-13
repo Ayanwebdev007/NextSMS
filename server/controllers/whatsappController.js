@@ -1,9 +1,4 @@
-import makeWASocket, {
-    useMultiFileAuthState,
-    DisconnectReason,
-    makeCacheableSignalKeyStore,
-    Browsers,
-} from "@whiskeysockets/baileys";
+import { default as makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } from "@whiskeysockets/baileys";
 import pino from "pino";
 
 import asyncHandler from "express-async-handler";
@@ -14,11 +9,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-/* =======================
-   GLOBAL STATE
-======================= */
-export const clients = {};
-const initializing = new Set();
+export const clients = {}; // businessId -> { sock, qr, status }
 
 /* =======================
    AUTH PATH
@@ -90,51 +81,37 @@ export const restoreSessions = async () => {
    INITIALIZE CLIENT
 ======================= */
 export const initializeClient = async (businessId) => {
-    if (clients[businessId] || initializing.has(businessId)) return;
-
-    initializing.add(businessId);
+    if (clients[businessId]) return;
 
     try {
         cleanBrokenSession(businessId);
 
-        // console.log(`[INIT] Initializing Baileys for ${businessId}`);
-
         const sessionPath = getSessionPath(businessId);
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
-        const logger = pino({ level: "silent" });
-
         const sock = makeWASocket({
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, logger),
-            },
-            printQRInTerminal: false,
-            syncFullHistory: false,
-            markOnlineOnConnect: true,
-            browser: Browsers.macOS("Desktop"),
-            logger,
-            defaultQueryTimeoutMs: 20000,
-            connectTimeoutMs: 20000,
-            keepAliveIntervalMs: 30000,
-            generateHighQualityLinkPreview: false,
+            auth: state,
+            logger: pino({ level: "silent" }),
+            browser: Browsers.appropriate("Chrome"),
         });
 
-        clients[businessId] = {
+        const session = {
             sock,
-            status: "initializing",
             qr: null,
-            reconnectAttempts: clients[businessId]?.reconnectAttempts || 0,
+            status: "initializing",
+            reconnectAttempts: 0
         };
+        clients[businessId] = session;
 
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
 
-            /* -------- QR -------- */
             if (qr) {
-                clients[businessId].qr = await qrcode.toDataURL(qr);
+                console.log(`[WhatsApp] QR generated for ${businessId}`);
+                session.qr = await qrcode.toDataURL(qr);
+                session.status = "qr_pending";
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "qr_pending" });
                 await Activity.create({
                     businessId,
@@ -143,76 +120,47 @@ export const initializeClient = async (businessId) => {
                 });
             }
 
-            /* -------- READY -------- */
             if (connection === "open") {
-                console.log(`[STABLE] Connection opened for ${businessId}`);
-                initializing.delete(businessId);
-                clients[businessId].status = "ready";
-                clients[businessId].qr = null;
-                clients[businessId].reconnectAttempts = 0; // Reset on success
+                console.log(`[WhatsApp] Connection opened for ${businessId}`);
+                session.status = "ready";
+                session.qr = null;
+                session.reconnectAttempts = 0;
 
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
 
-                if (clients[businessId].presenceInterval) clearInterval(clients[businessId].presenceInterval);
-                clients[businessId].presenceInterval = setInterval(async () => {
-                    try {
-                        if (clients[businessId]?.status === "ready") {
-                            await sock.sendPresenceUpdate("available");
-                        }
-                    } catch (err) {
-                        console.error(`[KEEPALIVE] Pulse failed for ${businessId}:`, err.message);
-                    }
-                }, 1000 * 60 * 5); // Intense pulse every 5 mins
+                // Presence update (non-blocking)
+                sock.sendPresenceUpdate("available").catch(() => { });
 
                 await Activity.create({
                     businessId,
                     event: 'connected',
-                    details: 'WhatsApp session stable and online'
+                    details: 'WhatsApp session connected successfully'
                 });
             }
 
-            /* -------- DISCONNECTED (Zero-Drop Policy) -------- */
             if (connection === "close") {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const code = statusCode || lastDisconnect?.error?.message;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-                console.warn(`[RECOVERY] Session interrupted for ${businessId}. Reason: ${code}. Reconnect: ${shouldReconnect}`);
+                console.warn(`[WhatsApp] Connection closed for ${businessId}. Reconnect: ${shouldReconnect}`);
 
-                if (clients[businessId]?.presenceInterval) clearInterval(clients[businessId].presenceInterval);
-
-                // Keep the data structure but mark as disconnected
-                if (clients[businessId]) {
-                    clients[businessId].status = "disconnected";
-                }
-
-                initializing.delete(businessId);
+                session.status = "disconnected";
+                session.qr = null;
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
                 if (shouldReconnect) {
-                    // Exponential Backoff: (2^attempts * 1000)ms + jitter
-                    const attempts = clients[businessId]?.reconnectAttempts || 0;
-                    const delay = Math.min(Math.pow(2, attempts) * 1000, 30000) + (Math.random() * 1000);
-
-                    if (clients[businessId]) clients[businessId].reconnectAttempts = attempts + 1;
-
-                    console.log(`[BACKOFF] Reconnecting ${businessId} in ${Math.round(delay / 1000)}s... (Attempt ${attempts + 1})`);
-
-                    setTimeout(() => {
-                        // Only re-init if not already trying
-                        if (!clients[businessId] || clients[businessId].status !== "ready") {
-                            initializeClient(businessId);
-                        }
-                    }, delay);
+                    const delay = Math.min(Math.pow(2, session.reconnectAttempts) * 1000, 30000);
+                    session.reconnectAttempts++;
+                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s...`);
+                    setTimeout(() => initializeClient(businessId), delay);
                 } else {
-                    console.error(`[FATAL] Session logged out for ${businessId}. Manual scan required.`);
+                    console.error(`[WhatsApp] Logged out for ${businessId}`);
                     delete clients[businessId];
                     deleteSessionFolder(businessId);
-
                     await Activity.create({
                         businessId,
                         event: 'auth_failure',
-                        details: 'Session logged out from phone. Re-scanning required.'
+                        details: 'Logged out from phone'
                     });
                 }
             }
@@ -249,8 +197,7 @@ export const initializeClient = async (businessId) => {
             }
         });
     } catch (err) {
-        console.error(`[CRITICAL] Error initializing client ${businessId}:`, err.message);
-        initializing.delete(businessId);
+        console.error(`[WhatsApp] Init error for ${businessId}:`, err.message);
         delete clients[businessId];
     }
 };
@@ -302,7 +249,7 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
     }
 
     // Priority 3: Ongoing initialization
-    if (client || initializing.has(businessId)) {
+    if (client) {
         return res.json({ status: "initializing" });
     }
 
