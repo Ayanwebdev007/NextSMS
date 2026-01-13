@@ -15,6 +15,16 @@ export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
 
 /* =======================
+   AUTH PATH
+======================= */
+const AUTH_PATH =
+    process.env.NODE_ENV === "production" ? path.join(os.tmpdir(), "baileys_auth") : path.resolve("./.baileys_auth");
+
+if (!fs.existsSync(AUTH_PATH)) {
+    fs.mkdirSync(AUTH_PATH, { recursive: true });
+}
+
+/* =======================
    DB AUTH HELPERS
 ======================= */
 const useMongoDBAuthState = async (businessId) => {
@@ -342,12 +352,14 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
     if (status === "connected") {
         // If it's supposed to be connected but not in memory, 
         // check if it's because it's being restored or if it's dead.
-        const sessionPath = getSessionPath(businessId);
-        if (fs.existsSync(sessionPath)) {
-            // Most likely it's about to be restored by the loop or just died.
+
+        // CHECK DB PERSISTENCE instead of FS
+        const sessionStore = await SessionStore.findOne({ businessId });
+        if (sessionStore && sessionStore.data && sessionStore.data.creds) {
+            // It exists in DB, so it will be restored.
             return res.json({ status: "initializing" });
         } else {
-            // No folder? It's gone.
+            // No record in DB? It's gone.
             return res.json({ status: "disconnected" });
         }
     }
