@@ -48,7 +48,11 @@ export const startWorker = async () => {
             console.log(`[WORKER] [Job:${job.id}] Active sessions in memory: [${activeSessions.join(", ")}]`);
 
             try {
-                // 🛑 Pause Check
+                // � Fetch Business Early (Used for session checks and footers)
+                const business = await Business.findById(businessId);
+                if (!business) throw new Error("Business not found");
+
+                // �🛑 Pause Check
                 if (campaignId) {
                     const campaign = await Campaign.findById(campaignId);
                     if (campaign && campaign.status === 'paused') {
@@ -72,7 +76,6 @@ export const startWorker = async () => {
                     }
 
                     if (!clientData || clientData.status !== "ready") {
-                        const business = await Business.findById(businessId);
                         if (business && business.sessionStatus === "connected") {
                             // If DB says connected but we don't have it, retry the job later
                             console.warn(`[WORKER] [Job:${job.id}] Session supposed to be connected but not ready in memory. Retrying in 10s...`);
