@@ -104,89 +104,51 @@ export const startWorker = async () => {
                 }
                 const jid = cleanRecipient.includes("@") ? cleanRecipient : `${cleanRecipient}@s.whatsapp.net`;
 
+                // Fetch campaign for buttons if campaignId exists
+                let buttons = [];
                 if (campaignId) {
                     const campaign = await Campaign.findById(campaignId);
                     if (campaign && campaign.buttons && campaign.buttons.length > 0) {
                         buttons = campaign.buttons.map((btn, index) => ({
-                            name: "quick_reply",
-                            buttonParamsJson: JSON.stringify({
-                                display_text: btn.text,
-                                id: `${campaignId}_${index}`
-                            })
+                            buttonId: `${campaignId}_${index}`,
+                            buttonText: { displayText: btn.text },
+                            type: 1
                         }));
                     }
                 }
 
-                let messagePayload = {};
+                let messagePayload = { text: processedText };
 
-                // 📎 Media Preparation
+                // 📎 Media 
                 let resolvedPath = filePath ? path.resolve(__dirname, filePath) : null;
                 if (resolvedPath && !fs.existsSync(resolvedPath)) {
                     resolvedPath = filePath;
                 }
 
-                let mediaBuffer = null;
                 if (resolvedPath && fs.existsSync(resolvedPath)) {
                     console.log(`[WORKER] [Job:${job.id}] Sending media file: ${resolvedPath}`);
-                    mediaBuffer = fs.readFileSync(resolvedPath);
+                    messagePayload = {
+                        image: fs.readFileSync(resolvedPath),
+                        caption: processedText,
+                    };
+                } else if (mediaUrl) {
+                    messagePayload = {
+                        image: { url: mediaUrl },
+                        caption: processedText,
+                    };
                 }
 
-                // 🏗️ Construct Payload
+                // Add buttons to payload if any (Standard buttonsMessage format)
+                // NOTE: buttonsMessage only works with TEXT, not with images
                 if (buttons.length > 0) {
-                    // ✅ Interactive Message (Buttons with optional Media)
-                    const interactiveMessage = {
-                        body: { text: processedText },
-                        footer: { text: business.name || "NextSMS" },
-                        nativeFlowMessage: {
-                            buttons: buttons
-                        }
-                    };
-
-                    if (mediaBuffer) {
-                        interactiveMessage.header = {
-                            title: "",
-                            subtitle: "",
-                            hasMediaAttachment: true,
-                            imageMessage: await sock.prepareWAMessageMedia({ image: mediaBuffer }, { upload: sock.waUploadToServer })
-                        };
-                    } else if (mediaUrl) {
-                        interactiveMessage.header = {
-                            title: "",
-                            subtitle: "",
-                            hasMediaAttachment: true,
-                            imageMessage: await sock.prepareWAMessageMedia({ image: { url: mediaUrl } }, { upload: sock.waUploadToServer })
-                        };
+                    // If there's media, we can't use buttons - strip them
+                    if (mediaUrl || (resolvedPath && fs.existsSync(resolvedPath))) {
+                        console.warn(`[WORKER] [Job:${job.id}] Buttons not supported with media. Sending media without buttons.`);
+                        // Keep the media payload as-is, no buttons
                     } else {
-                        interactiveMessage.header = {
-                            title: "",
-                            subtitle: "",
-                            hasMediaAttachment: false
-                        };
-                    }
-
-                    // Wrap in viewOnceMessage for better compatibility
-                    messagePayload = {
-                        viewOnceMessage: {
-                            message: {
-                                interactiveMessage: interactiveMessage
-                            }
-                        }
-                    };
-
-                } else {
-                    // 📝 Standard Text or Media Message (No Buttons)
-                    if (mediaBuffer) {
-                        messagePayload = {
-                            image: mediaBuffer,
-                            caption: processedText,
-                        };
-                    } else if (mediaUrl) {
-                        messagePayload = {
-                            image: { url: mediaUrl },
-                            caption: processedText,
-                        };
-                    } else {
-                        messagePayload = { text: processedText };
+                        // Text-only message with buttons
+                        messagePayload.buttons = buttons;
+                        messagePayload.footer = business.name || "NextSMS";
                     }
                 }
 
@@ -198,30 +160,19 @@ export const startWorker = async () => {
                     if (buttons.length > 0) {
                         console.warn(`[WORKER] [Job:${job.id}] Button delivery failed (${sendError.message}). Falling back to standard message...`);
 
-                        // Strip buttons and try one more time as standard text/media
-                        let fallbackPayload = {};
-                        if (mediaBuffer) {
-                            fallbackPayload = {
-                                image: mediaBuffer,
-                                caption: processedText,
-                            };
-                        } else if (mediaUrl) {
-                            fallbackPayload = {
-                                image: { url: mediaUrl },
-                                caption: processedText,
-                            };
-                        } else {
-                            fallbackPayload = { text: processedText };
-                        }
+                        // Strip buttons and try one more time
+                        const fallbackPayload = { ...messagePayload };
+                        delete fallbackPayload.buttons;
+                        delete fallbackPayload.footer;
+                        delete fallbackPayload.headerType;
 
                         await sock.sendMessage(jid, fallbackPayload);
 
                         // Mark history as sent with fallback
-                        const fallbackErrorMsg = "Buttons rejected; sent as standard message.";
                         if (messageId) {
                             await Message.findByIdAndUpdate(messageId, {
                                 status: "sent",
-                                errorMessage: fallbackErrorMsg,
+                                errorMessage: "Buttons rejected by server; delivered as text fallback.",
                                 content: processedText,
                                 sentAt: new Date(),
                             });
@@ -232,7 +183,7 @@ export const startWorker = async () => {
                                 recipient,
                                 content: processedText,
                                 status: "sent",
-                                errorMessage: fallbackErrorMsg,
+                                errorMessage: "Buttons rejected by server; delivered as text fallback.",
                                 sentAt: new Date(),
                             });
                         }
