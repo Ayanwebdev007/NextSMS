@@ -45,6 +45,9 @@ const ConnectionCard = () => {
                     signal: fetchController.current.signal,
                 });
                 const newStatus = response.data.status || "disconnected";
+                const newQr = response.data.qrCodeUrl || "";
+
+                if (newQr) setQrCodeUrl(newQr);
 
                 setStatus((prevStatus) => {
                     if (prevStatus !== newStatus) {
@@ -278,13 +281,21 @@ const ConnectionCard = () => {
                     </button>
                 )}
                 {status === "qr_pending" && (
-                    <button
-                        onClick={() => setIsConfirmModalOpen(true)}
-                        disabled={isActionLoading}
-                        className="flex-1 text-center font-bold text-white bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-lg transition-colors"
-                    >
-                        Cancel Scan
-                    </button>
+                    <div className="flex flex-col gap-2 flex-1">
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="w-full text-center font-bold text-white bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-lg transition-colors"
+                        >
+                            View QR Code
+                        </button>
+                        <button
+                            onClick={() => setIsConfirmModalOpen(true)}
+                            disabled={isActionLoading}
+                            className="w-full text-center font-bold text-white bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-lg transition-colors text-sm"
+                        >
+                            Cancel Scan
+                        </button>
+                    </div>
                 )}
                 {status === "connected" && (
                     <button

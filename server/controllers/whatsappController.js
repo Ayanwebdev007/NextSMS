@@ -97,9 +97,10 @@ export const initializeClient = async (businessId) => {
         },
         printQRInTerminal: false,
         syncFullHistory: false,
-        markOnlineOnConnect: false,
+        markOnlineOnConnect: true,
         browser: ["NextSMS", "Chrome", "1.0"],
         logger,
+        keepAliveIntervalMs: 30000,
     });
 
     clients[businessId] = {
@@ -115,114 +116,99 @@ export const initializeClient = async (businessId) => {
 
         /* -------- QR -------- */
         if (qr) {
-            // console.log(`[QR] Generated for ${businessId}`);
             clients[businessId].qr = await qrcode.toDataURL(qr);
-
-            await Business.findByIdAndUpdate(businessId, {
-                sessionStatus: "qr_pending",
-            });
-
+            await Business.findByIdAndUpdate(businessId, { sessionStatus: "qr_pending" });
             await Activity.create({
                 businessId,
                 event: 'qr_generated',
-                details: 'WhatsApp QR code generated for authentication'
+                details: 'WhatsApp QR code generated'
             });
         }
 
         /* -------- READY -------- */
         if (connection === "open") {
-            // console.log(`[READY] Client ready for ${businessId}`);
-
             initializing.delete(businessId);
             clients[businessId].status = "ready";
             clients[businessId].qr = null;
 
-            await Business.findByIdAndUpdate(businessId, {
-                sessionStatus: "connected",
-            });
+            await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
+
+            // 💓 Keep-alive pulse
+            if (clients[businessId].presenceInterval) clearInterval(clients[businessId].presenceInterval);
+            clients[businessId].presenceInterval = setInterval(async () => {
+                try {
+                    if (clients[businessId]?.status === "ready") {
+                        await sock.sendPresenceUpdate("available");
+                    }
+                } catch (err) {
+                    console.error(`[KEEPALIVE] ${businessId}:`, err.message);
+                }
+            }, 1000 * 60 * 5);
 
             await Activity.create({
                 businessId,
                 event: 'connected',
-                details: 'WhatsApp session successfully connected'
+                details: 'WhatsApp session connected'
             });
         }
-
-        /* -------- MESSAGES (Auto-Responder) -------- */
-        sock.ev.on("messages.upsert", async ({ messages, type }) => {
-            if (type !== "notify") return;
-
-            for (const msg of messages) {
-                if (!msg.message || msg.key.fromMe) continue;
-
-                const buttonResponse = msg.message.buttonsResponseMessage;
-                if (buttonResponse) {
-                    const selectedId = buttonResponse.selectedButtonId;
-                    const sender = msg.key.remoteJid;
-
-                    // The ID is stored in the format "campaignId_buttonIndex"
-                    if (selectedId && selectedId.includes('_')) {
-                        const [campaignId, buttonIndex] = selectedId.split('_');
-
-                        try {
-                            const { Campaign } = await import("../models/campaign.model.js");
-                            const campaign = await Campaign.findById(campaignId);
-
-                            if (campaign && campaign.buttons && campaign.buttons[buttonIndex]) {
-                                const replyText = campaign.buttons[buttonIndex].reply;
-
-                                console.log(`[AUTO-REPLY] Sending to ${sender} for campaign ${campaignId}`);
-                                await sock.sendMessage(sender, { text: replyText });
-
-                                // Log activity
-                                await Activity.create({
-                                    businessId,
-                                    event: 'auto_reply_sent',
-                                    details: `Sent auto-reply to ${sender} for ${campaign.name}`
-                                });
-                            }
-                        } catch (err) {
-                            console.error("[AUTO-REPLY] Error:", err.message);
-                        }
-                    }
-                }
-            }
-        });
 
         /* -------- DISCONNECTED -------- */
         if (connection === "close") {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const code = statusCode || lastDisconnect?.error?.message;
-
             console.warn(`[DISCONNECTED] ${businessId}`, code);
 
             const isLogout = statusCode === DisconnectReason.loggedOut;
             const isManual = clients[businessId]?.manualDisconnect;
 
+            if (clients[businessId]?.presenceInterval) clearInterval(clients[businessId].presenceInterval);
+
             delete clients[businessId];
             initializing.delete(businessId);
 
-            await Business.findByIdAndUpdate(businessId, {
-                sessionStatus: "disconnected",
-            });
+            await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
             await Activity.create({
                 businessId,
                 event: isLogout ? 'auth_failure' : 'disconnected',
-                details: isManual
-                    ? 'Session closed following manual disconnect request'
-                    : `Automatic disconnection: ${code}. ${isLogout ? 'Session logged out.' : 'Attempting reconnect...'}`
+                details: isManual ? 'Manual disconnect' : `Auto disconnect: ${code}`
             });
 
-            /* AUTO RECONNECT (NOT LOGOUT) */
-            if (statusCode !== DisconnectReason.loggedOut) {
-                // console.log(`[RECONNECT] Reconnecting ${businessId}...`);
+            if (!isLogout) {
                 setTimeout(() => initializeClient(businessId), 3000);
             } else {
-                // console.log(`[LOGOUT] Clearing session for ${businessId}`);
-                // Clear auth so next connect will force a fresh QR
                 deleteSessionFolder(businessId);
-                // Do not auto-reconnect; wait for explicit /session/connect
+            }
+        }
+    });
+
+    /* -------- MESSAGES (Auto-Responder) -------- */
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        if (type !== "notify") return;
+        for (const msg of messages) {
+            if (!msg.message || msg.key.fromMe) continue;
+            const buttonResponse = msg.message.buttonsResponseMessage;
+            if (buttonResponse) {
+                const selectedId = buttonResponse.selectedButtonId;
+                const sender = msg.key.remoteJid;
+                if (selectedId && selectedId.includes('_')) {
+                    const [campaignId, buttonIndex] = selectedId.split('_');
+                    try {
+                        const { Campaign } = await import("../models/campaign.model.js");
+                        const campaign = await Campaign.findById(campaignId);
+                        if (campaign && campaign.buttons && campaign.buttons[buttonIndex]) {
+                            const replyText = campaign.buttons[buttonIndex].reply;
+                            await sock.sendMessage(sender, { text: replyText });
+                            await Activity.create({
+                                businessId,
+                                event: 'auto_reply_sent',
+                                details: `Sent auto-reply to ${sender}`
+                            });
+                        }
+                    } catch (err) {
+                        console.error("[AUTO-REPLY] Error:", err.message);
+                    }
+                }
             }
         }
     });
@@ -266,7 +252,10 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
     }
 
     if (client?.qr) {
-        return res.json({ status: "qr_pending" });
+        return res.json({
+            status: "qr_pending",
+            qrCodeUrl: client.qr
+        });
     }
 
     const business = await Business.findById(businessId);
