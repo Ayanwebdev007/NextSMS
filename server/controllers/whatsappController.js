@@ -81,19 +81,31 @@ export const restoreSessions = async () => {
    INITIALIZE CLIENT
 ======================= */
 export const initializeClient = async (businessId) => {
-    if (clients[businessId]) return;
+    // Corrected Guard: Only block if already connected or genuinely initializing
+    if (clients[businessId]) {
+        if (clients[businessId].status === "ready") return;
+        if (clients[businessId].status === "initializing" && clients[businessId].sock) return;
+
+        // If it's old/dead, kill it before starting a new one
+        console.log(`[WhatsApp] Cleaning up old socket for ${businessId} before re-init`);
+        try { clients[businessId].sock?.end(); } catch (e) { }
+        delete clients[businessId];
+    }
 
     try {
-        cleanBrokenSession(businessId);
-
         const sessionPath = getSessionPath(businessId);
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
-            browser: Browsers.appropriate("Chrome"),
+            browser: Browsers.macOS("Desktop"),
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
         });
+
+        console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
 
         const session = {
             sock,
@@ -109,15 +121,10 @@ export const initializeClient = async (businessId) => {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
-                console.log(`[WhatsApp] QR generated for ${businessId}`);
+                console.log(`[WhatsApp] New QR generated for ${businessId}`);
                 session.qr = await qrcode.toDataURL(qr);
                 session.status = "qr_pending";
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "qr_pending" });
-                await Activity.create({
-                    businessId,
-                    event: 'qr_generated',
-                    details: 'WhatsApp QR code generated'
-                });
             }
 
             if (connection === "open") {
@@ -128,13 +135,15 @@ export const initializeClient = async (businessId) => {
 
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
 
-                // Presence update (non-blocking)
-                sock.sendPresenceUpdate("available").catch(() => { });
+                // Presence update to keep alive
+                try {
+                    await sock.sendPresenceUpdate("available");
+                } catch (e) { }
 
                 await Activity.create({
                     businessId,
                     event: 'connected',
-                    details: 'WhatsApp session connected successfully'
+                    details: 'WhatsApp session linked successfully'
                 });
             }
 
@@ -142,7 +151,7 @@ export const initializeClient = async (businessId) => {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-                console.warn(`[WhatsApp] Connection closed for ${businessId}. Reconnect: ${shouldReconnect}`);
+                console.warn(`[WhatsApp] Connection closed for ${businessId}. Status: ${statusCode || 'unknown'}. Reconnect: ${shouldReconnect}`);
 
                 session.status = "disconnected";
                 session.qr = null;
@@ -152,15 +161,19 @@ export const initializeClient = async (businessId) => {
                     const delay = Math.min(Math.pow(2, session.reconnectAttempts) * 1000, 30000);
                     session.reconnectAttempts++;
                     console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s...`);
+
+                    // CRITICAL: Delete from memory so initializeClient can actually run again
+                    delete clients[businessId];
+
                     setTimeout(() => initializeClient(businessId), delay);
                 } else {
-                    console.error(`[WhatsApp] Logged out for ${businessId}`);
+                    console.error(`[WhatsApp] Logged out for ${businessId}. Deleting session folder.`);
                     delete clients[businessId];
                     deleteSessionFolder(businessId);
                     await Activity.create({
                         businessId,
                         event: 'auth_failure',
-                        details: 'Logged out from phone'
+                        details: 'Session logged out from phone'
                     });
                 }
             }
@@ -208,9 +221,20 @@ export const initializeClient = async (businessId) => {
 export const connectSession = asyncHandler(async (req, res) => {
     const businessId = req.business._id.toString();
 
+    // Force a Hard Reset for NEW connections
     if (clients[businessId]) {
-        return res.status(409).json({ message: "Session already active" });
+        if (clients[businessId].status === "ready") {
+            return res.status(409).json({ message: "Session already connected" });
+        }
+        // If it's already initializing but the user clicked connect again, kill the old one
+        if (clients[businessId].sock) {
+            try { clients[businessId].sock.end(); } catch (e) { }
+        }
+        delete clients[businessId];
     }
+
+    // Wipe folder to ensure a 100% clean scan
+    deleteSessionFolder(businessId);
 
     initializeClient(businessId);
 
