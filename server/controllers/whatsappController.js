@@ -28,19 +28,25 @@ if (!fs.existsSync(AUTH_PATH)) {
    DB AUTH HELPERS
 ======================= */
 const useMongoDBAuthState = async (businessId) => {
-    // 1. Initial Read
+    // 1. Initial Read from DB
     let creds;
+    let keys = {};
     const existingSession = await SessionStore.findOne({ businessId });
 
     if (existingSession && existingSession.data && existingSession.data.creds) {
-        // Deserialize JSON back to Buffers
+        // Deserialize existing session from DB
+        console.log(`[AUTH] Restoring session from DB for ${businessId}`);
         creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
+
+        // Restore keys if they exist
+        if (existingSession.data.keys) {
+            keys = existingSession.data.keys;
+        }
     } else {
-        // Init state but don't save yet
-        const { state } = await useMultiFileAuthState(getSessionPath(businessId));
-        // Note: For true DB-only we'd manually init creds here, but we can reuse Baileys init logic partially
-        // Actually, let's implement true DB logic to avoid FS dependency entirely:
-        creds = (await import("@whiskeysockets/baileys")).initAuthCreds();
+        // Initialize fresh credentials (no DB session exists)
+        console.log(`[AUTH] Initializing fresh credentials for ${businessId}`);
+        const { initAuthCreds } = await import("@whiskeysockets/baileys");
+        creds = initAuthCreds();
     }
 
     // 2. Save Function
