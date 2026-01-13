@@ -143,7 +143,48 @@ export const startWorker = async () => {
                 }
 
                 console.log(`[WORKER] [Job:${job.id}] Dispatching message to ${jid} (Auto-formatted)...`);
-                await sock.sendMessage(jid, messagePayload);
+
+                try {
+                    await sock.sendMessage(jid, messagePayload);
+                } catch (sendError) {
+                    if (buttons.length > 0) {
+                        console.warn(`[WORKER] [Job:${job.id}] Button delivery failed (${sendError.message}). Falling back to standard message...`);
+
+                        // Strip buttons and try one more time
+                        const fallbackPayload = { ...messagePayload };
+                        delete fallbackPayload.buttons;
+                        delete fallbackPayload.footer;
+                        delete fallbackPayload.headerType;
+
+                        await sock.sendMessage(jid, fallbackPayload);
+
+                        // Mark history as sent with fallback
+                        if (messageId) {
+                            await Message.findByIdAndUpdate(messageId, {
+                                status: "sent",
+                                errorMessage: "Buttons rejected by server; delivered as text fallback.",
+                                content: processedText,
+                                sentAt: new Date(),
+                            });
+                        } else {
+                            await Message.create({
+                                businessId,
+                                campaignId: campaignId || null,
+                                recipient,
+                                content: processedText,
+                                status: "sent",
+                                errorMessage: "Buttons rejected by server; delivered as text fallback.",
+                                sentAt: new Date(),
+                            });
+                        }
+
+                        // Proceed to end of loop (don't create duplicate record)
+                        return;
+                    } else {
+                        throw sendError;
+                    }
+                }
+
                 console.log(`[WORKER] [Job:${job.id}] Message sent to ${recipient}`);
 
                 // 💳 Update credits & Campaign counts
@@ -152,7 +193,7 @@ export const startWorker = async () => {
                     await Campaign.findByIdAndUpdate(campaignId, { $inc: { sentCount: 1 } });
                 }
 
-                // Update or Create history record
+                // Update or Create history record (Normal Success)
                 if (messageId) {
                     await Message.findByIdAndUpdate(messageId, {
                         status: "sent",
