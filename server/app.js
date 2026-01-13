@@ -6,8 +6,16 @@ import cors from 'cors';
 import connectDB from './db/db.js';
 import { clients, restoreSessions } from './controllers/whatsappController.js';
 import { handleWebhook } from './controllers/paymentController.js';
+import { startKeepAlive } from './utils/keepAlive.js';
+
 connectDB().then(async () => {
   await restoreSessions();
+
+  // Start keep-alive mechanism for Render free tier
+  if (process.env.NODE_ENV === 'production') {
+    startKeepAlive();
+  }
+
   try {
     const { startWorker } = await import('./worker.js');
     await startWorker();
