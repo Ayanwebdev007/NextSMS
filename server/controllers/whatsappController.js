@@ -50,16 +50,23 @@ const useMongoDBAuthState = async (businessId) => {
     }
 
     // 2. Save Function
-    const saveCreds = () => {
-        return SessionStore.findOneAndUpdate(
-            { businessId },
-            {
-                $set: {
-                    "data.creds": JSON.parse(JSON.stringify(creds, BufferJSON.replacer))
-                }
-            },
-            { upsert: true, new: true }
-        );
+    const saveCreds = async () => {
+        try {
+            const result = await SessionStore.findOneAndUpdate(
+                { businessId: businessId }, // businessId is already an ObjectId from the parameter
+                {
+                    $set: {
+                        "data.creds": JSON.parse(JSON.stringify(creds, BufferJSON.replacer))
+                    }
+                },
+                { upsert: true, new: true }
+            );
+            console.log(`[AUTH] Credentials saved to DB for ${businessId}`);
+            return result;
+        } catch (err) {
+            console.error(`[AUTH] Failed to save credentials for ${businessId}:`, err.message);
+            throw err;
+        }
     };
 
     return {
@@ -80,26 +87,32 @@ const useMongoDBAuthState = async (businessId) => {
                     return data;
                 },
                 set: async (data) => {
-                    const session = await SessionStore.findOne({ businessId });
-                    const currentData = session?.data || {};
+                    try {
+                        const session = await SessionStore.findOne({ businessId });
+                        const currentData = session?.data || {};
 
-                    for (const type in data) {
-                        if (!currentData[type]) currentData[type] = {};
-                        for (const id in data[type]) {
-                            const val = data[type][id];
-                            if (val) {
-                                currentData[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
-                            } else {
-                                delete currentData[type][id];
+                        for (const type in data) {
+                            if (!currentData[type]) currentData[type] = {};
+                            for (const id in data[type]) {
+                                const val = data[type][id];
+                                if (val) {
+                                    currentData[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                } else {
+                                    delete currentData[type][id];
+                                }
                             }
                         }
-                    }
 
-                    await SessionStore.findOneAndUpdate(
-                        { businessId },
-                        { $set: { data: currentData } },
-                        { upsert: true }
-                    );
+                        await SessionStore.findOneAndUpdate(
+                            { businessId },
+                            { $set: { data: currentData } },
+                            { upsert: true }
+                        );
+                        console.log(`[AUTH] Keys updated in DB for ${businessId}`);
+                    } catch (err) {
+                        console.error(`[AUTH] Failed to save keys for ${businessId}:`, err.message);
+                        throw err;
+                    }
                 }
             }
         },
