@@ -138,44 +138,17 @@ export const startWorker = async () => {
                     };
                 }
 
-                // Add buttons to payload if any (Modern InteractiveMessage Format)
+                // Add buttons to payload if any (Standard buttonsMessage format)
+                // NOTE: buttonsMessage only works with TEXT, not with images
                 if (buttons.length > 0) {
-                    const interactiveMessage = {
-                        body: { text: processedText },
-                        footer: { text: business.name || "NextSMS" },
-                        header: {
-                            title: "", // Optional header title
-                            hasMediaAttachment: !!(mediaUrl || resolvedPath)
-                        },
-                        nativeFlowMessage: {
-                            buttons: buttons.map(btn => ({
-                                name: "quick_reply",
-                                buttonParamsJson: JSON.stringify({
-                                    display_text: btn.buttonText.displayText,
-                                    id: btn.buttonId
-                                })
-                            }))
-                        }
-                    };
-
-                    messagePayload = {
-                        viewOnceMessage: {
-                            message: {
-                                interactiveMessage
-                            }
-                        }
-                    };
-
-                    // Note: Media handling within InteractiveMessage is complex. 
-                    // If media exists, we'll keep it as a separate follow-up or use the imageMessage property.
-                    if (resolvedPath && fs.existsSync(resolvedPath)) {
-                        messagePayload.viewOnceMessage.message.interactiveMessage.header.imageMessage = {
-                            url: resolvedPath
-                        };
-                    } else if (mediaUrl) {
-                        messagePayload.viewOnceMessage.message.interactiveMessage.header.imageMessage = {
-                            url: mediaUrl
-                        };
+                    // If there's media, we can't use buttons - strip them
+                    if (mediaUrl || (resolvedPath && fs.existsSync(resolvedPath))) {
+                        console.warn(`[WORKER] [Job:${job.id}] Buttons not supported with media. Sending media without buttons.`);
+                        // Keep the media payload as-is, no buttons
+                    } else {
+                        // Text-only message with buttons
+                        messagePayload.buttons = buttons;
+                        messagePayload.footer = business.name || "NextSMS";
                     }
                 }
 
