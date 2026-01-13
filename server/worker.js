@@ -52,35 +52,34 @@ export const startWorker = async () => {
                 if (campaignId) {
                     const campaign = await Campaign.findById(campaignId);
                     if (campaign && campaign.status === 'paused') {
-                        console.log(`[WORKER] [Job:${job.id}] Campaign is paused. Rescheduling...`);
+                        console.log(`[WORKER] [Job:${job.id}] Campaign paused. Rescheduling...`);
                         await job.moveToDelayed(Date.now() + 30000);
                         return;
                     }
                 }
 
-                // 🔍 Fetch Business & Session Check
-                const business = await Business.findById(businessId);
-                if (!business) throw new Error("Business not found");
-
+                // 🔍 Session Check (Consumer Only - No Competing Init)
                 let clientData = clients[businessId];
 
                 if (!clientData || clientData.status !== "ready") {
-                    console.log(`[WORKER] [Job:${job.id}] Session missing/not ready. Checking auto-restore...`);
+                    console.log(`[WORKER] [Job:${job.id}] Session not ready (Status: ${clientData?.status || 'missing'}). Waiting...`);
 
-                    if (business.sessionStatus === "connected") {
-                        const { initializeClient } = await import("./controllers/whatsappController.js");
-                        await initializeClient(businessId);
-
-                        // Wait up to 15 seconds for session to become ready
-                        for (let i = 0; i < 15; i++) {
-                            await new Promise(r => setTimeout(r, 1000));
-                            clientData = clients[businessId];
-                            if (clientData?.status === "ready") break;
-                        }
+                    // Wait up to 10 seconds for session to become ready (managed by restoreSessions)
+                    for (let i = 0; i < 10; i++) {
+                        await new Promise(r => setTimeout(r, 1000));
+                        clientData = clients[businessId];
+                        if (clientData?.status === "ready") break;
                     }
 
                     if (!clientData || clientData.status !== "ready") {
-                        throw new Error(`WhatsApp session not ready (Status: ${clientData?.status || 'missing'})`);
+                        const business = await Business.findById(businessId);
+                        if (business && business.sessionStatus === "connected") {
+                            // If DB says connected but we don't have it, retry the job later
+                            console.warn(`[WORKER] [Job:${job.id}] Session supposed to be connected but not ready in memory. Retrying in 10s...`);
+                            await job.moveToDelayed(Date.now() + 10000);
+                            return;
+                        }
+                        throw new Error(`WhatsApp not connected (Status: ${business?.sessionStatus || 'disconnected'})`);
                     }
                 }
 
@@ -205,7 +204,10 @@ export const startWorker = async () => {
             console.log(`[WORKER] [Job:${job.id}] Delaying next action for ${delay}ms...`);
             await new Promise((r) => setTimeout(r, delay));
         },
-        { connection }
+        {
+            connection,
+            concurrency: 1
+        }
     );
 
     worker.on("completed", (job) => {

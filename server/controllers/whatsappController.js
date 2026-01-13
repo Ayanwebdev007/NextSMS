@@ -10,6 +10,7 @@ import path from "path";
 import os from "os";
 
 export const clients = {}; // businessId -> { sock, qr, status }
+const initializing = new Set();
 
 /* =======================
    AUTH PATH
@@ -81,11 +82,18 @@ export const restoreSessions = async () => {
    INITIALIZE CLIENT
 ======================= */
 export const initializeClient = async (businessId) => {
+    // SYNC GUARD: Prevent racing initializations
+    if (clients[businessId]?.status === "ready") return;
+    if (initializing.has(businessId)) {
+        console.log(`[WhatsApp] Already initializing ${businessId}, skipping duplicate call.`);
+        return;
+    }
+
+    initializing.add(businessId);
+    console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
+
     // Corrected Guard: Only block if already connected or genuinely initializing
     if (clients[businessId]) {
-        if (clients[businessId].status === "ready") return;
-        if (clients[businessId].status === "initializing" && clients[businessId].sock) return;
-
         // If it's old/dead, kill it before starting a new one
         console.log(`[WhatsApp] Cleaning up old socket for ${businessId} before re-init`);
         try { clients[businessId].sock?.end(); } catch (e) { }
@@ -99,13 +107,7 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
-            browser: Browsers.macOS("Desktop"),
-            connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 60000,
-            keepAliveIntervalMs: 30000,
         });
-
-        console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
 
         const session = {
             sock,
@@ -114,6 +116,7 @@ export const initializeClient = async (businessId) => {
             reconnectAttempts: 0
         };
         clients[businessId] = session;
+        // initializing.delete(businessId); // This was moved to connection.update and catch block
 
         sock.ev.on("creds.update", saveCreds);
 
@@ -132,6 +135,7 @@ export const initializeClient = async (businessId) => {
                 session.status = "ready";
                 session.qr = null;
                 session.reconnectAttempts = 0;
+                initializing.delete(businessId); // Clear initializing set on successful connection
 
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
 
@@ -162,18 +166,20 @@ export const initializeClient = async (businessId) => {
                     session.reconnectAttempts++;
                     console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s...`);
 
-                    // CRITICAL: Delete from memory so initializeClient can actually run again
+                    // Cleanup memory but NOT folder
                     delete clients[businessId];
+                    initializing.delete(businessId);
 
                     setTimeout(() => initializeClient(businessId), delay);
                 } else {
-                    console.error(`[WhatsApp] Logged out for ${businessId}. Deleting session folder.`);
+                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Folder preserved for recovery.`);
                     delete clients[businessId];
-                    deleteSessionFolder(businessId);
+                    initializing.delete(businessId);
+
                     await Activity.create({
                         businessId,
                         event: 'auth_failure',
-                        details: 'Session logged out from phone'
+                        details: 'Session logged out from phone. Please re-scan.'
                     });
                 }
             }
@@ -212,6 +218,7 @@ export const initializeClient = async (businessId) => {
     } catch (err) {
         console.error(`[WhatsApp] Init error for ${businessId}:`, err.message);
         delete clients[businessId];
+        initializing.delete(businessId);
     }
 };
 
@@ -324,7 +331,7 @@ export const disconnectSession = asyncHandler(async (req, res) => {
         delete clients[businessId];
     }
 
-    initializing.delete(businessId);
+    // deleted initializing reference
     deleteSessionFolder(businessId);
 
     await Business.findByIdAndUpdate(businessId, {
