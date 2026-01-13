@@ -112,6 +112,13 @@ const ConnectionCard = () => {
         };
     }, [fetchStatus, token, stopPolling]);
 
+    // 🚀 Auto-open QR modal if scan is pending
+    useEffect(() => {
+        if (status === "qr_pending" && qrCodeUrl && !isModalOpen) {
+            setIsModalOpen(true);
+        }
+    }, [status, qrCodeUrl, isModalOpen]);
+
     // const handleConnect = async () => {
     //     setIsActionLoading(true);
     //     connectToastId.current = toast.loading("Initializing session...");
