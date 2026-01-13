@@ -13,6 +13,7 @@ import { BufferJSON } from "@whiskeysockets/baileys"; // Need BufferJSON to seri
 
 export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
+const connectionTimers = {}; // businessId -> timeoutId
 
 /* =======================
    AUTH PATH
@@ -172,6 +173,28 @@ export const initializeClient = async (businessId) => {
     initializing.add(businessId);
     console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
 
+    // 🕒 30s GLOBAL TIMEOUT (Persists across retries)
+    if (!connectionTimers[businessId]) {
+        console.log(`[WhatsApp] Starting 30s connection timer for ${businessId}`);
+        connectionTimers[businessId] = setTimeout(async () => {
+            console.error(`[WhatsApp] Connection timed out (30s) for ${businessId}. Force-clearing session to generate new QR.`);
+            delete connectionTimers[businessId];
+
+            // 1. Delete corrupted session from DB
+            await SessionStore.deleteOne({ businessId });
+
+            // 2. Kill current socket
+            if (clients[businessId]) {
+                try { clients[businessId].sock?.end(); } catch (e) { }
+                delete clients[businessId];
+            }
+            initializing.delete(businessId);
+
+            // 3. Restart fresh (New QR)
+            initializeClient(businessId);
+        }, 30000);
+    }
+
     // Corrected Guard: Only block if already connected or genuinely initializing
     if (clients[businessId]) {
         // If it's old/dead, kill it before starting a new one
@@ -216,6 +239,12 @@ export const initializeClient = async (businessId) => {
                 session.reconnectAttempts = 0;
                 initializing.delete(businessId); // Clear initializing set on successful connection
 
+                // ✅ Clear Timeout on Success
+                if (connectionTimers[businessId]) {
+                    clearTimeout(connectionTimers[businessId]);
+                    delete connectionTimers[businessId];
+                }
+
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
 
                 // Presence update to keep alive
@@ -241,6 +270,14 @@ export const initializeClient = async (businessId) => {
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
                 if (shouldReconnect) {
+                    // 🛑 MAX RETRY CHECK
+                    if (session.reconnectAttempts >= 5) {
+                        console.error(`[WhatsApp] Max retries (5) reached for ${businessId}. Clearing corrupted session from DB to force new QR.`);
+                        await SessionStore.deleteOne({ businessId });
+                        session.reconnectAttempts = 0;
+                        // The next initializeClient will now find no session and start fresh
+                    }
+
                     const delay = Math.min(Math.pow(2, session.reconnectAttempts) * 1000, 30000);
                     session.reconnectAttempts++;
                     console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s...`);
@@ -406,6 +443,13 @@ export const disconnectSession = asyncHandler(async (req, res) => {
 
     if (client) {
         client.manualDisconnect = true;
+
+        // Clear timeout if manual disconnect
+        if (connectionTimers[businessId]) {
+            clearTimeout(connectionTimers[businessId]);
+            delete connectionTimers[businessId];
+        }
+
         if (client.sock) {
             try {
                 await client.sock.logout();
