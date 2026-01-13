@@ -9,7 +9,7 @@ export const startKeepAlive = () => {
     const BACKEND_URL = process.env.BACKEND_URL || 'https://nextsms-backend.onrender.com';
 
     const ping = () => {
-        const url = `${BACKEND_URL}/ping`;
+        const url = `${BACKEND_URL}/api/health`;
         console.log(`[KEEP-ALIVE] Self-pinging ${url}...`);
 
         https.get(url, (res) => {

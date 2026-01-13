@@ -30,6 +30,14 @@ app.get('/ping', (req, res) => {
   console.log('[MONITOR] Server pinged at', new Date().toISOString());
   res.send('pong');
 });
+app.get('/api/health', (req, res) => {
+  console.log('[HEALTH] Health check at', new Date().toISOString());
+  res.json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 app.get('/', (req, res) => res.send('NextSMS Server is Online 🚀'));
 const corsOptions = {
   origin: [
