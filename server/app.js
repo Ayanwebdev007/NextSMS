@@ -16,6 +16,13 @@ connectDB().then(async () => {
   }
 });
 const app = express();
+
+// --- Health Check for UptimeRobot --- //
+app.get('/ping', (req, res) => {
+  console.log('[MONITOR] Server pinged at', new Date().toISOString());
+  res.send('pong');
+});
+app.get('/', (req, res) => res.send('NextSMS Server is Online 🚀'));
 const corsOptions = {
   origin: [
     process.env.FRONTEND_URL,
@@ -33,8 +40,8 @@ app.use(cors(corsOptions));
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), handleWebhook);
 
 
-// Health Check for UptimeRobot
-app.get('/ping', (req, res) => res.send('pong'));
+// Health check already defined at top
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
