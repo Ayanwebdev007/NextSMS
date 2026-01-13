@@ -135,11 +135,45 @@ export const startWorker = async () => {
                     };
                 }
 
-                // Add buttons to payload if any (Include footer for better compatibility)
+                // Add buttons to payload if any (Modern InteractiveMessage Format)
                 if (buttons.length > 0) {
-                    messagePayload.buttons = buttons;
-                    messagePayload.footer = business.name || "NextSMS";
-                    messagePayload.headerType = (mediaUrl || resolvedPath) ? 4 : 1;
+                    const interactiveMessage = {
+                        body: { text: processedText },
+                        footer: { text: business.name || "NextSMS" },
+                        header: {
+                            title: "", // Optional header title
+                            hasMediaAttachment: !!(mediaUrl || resolvedPath)
+                        },
+                        nativeFlowMessage: {
+                            buttons: buttons.map(btn => ({
+                                name: "quick_reply",
+                                buttonParamsJson: JSON.stringify({
+                                    display_text: btn.buttonText.displayText,
+                                    id: btn.buttonId
+                                })
+                            }))
+                        }
+                    };
+
+                    messagePayload = {
+                        viewOnceMessage: {
+                            message: {
+                                interactiveMessage
+                            }
+                        }
+                    };
+
+                    // Note: Media handling within InteractiveMessage is complex. 
+                    // If media exists, we'll keep it as a separate follow-up or use the imageMessage property.
+                    if (resolvedPath && fs.existsSync(resolvedPath)) {
+                        messagePayload.viewOnceMessage.message.interactiveMessage.header.imageMessage = {
+                            url: resolvedPath
+                        };
+                    } else if (mediaUrl) {
+                        messagePayload.viewOnceMessage.message.interactiveMessage.header.imageMessage = {
+                            url: mediaUrl
+                        };
+                    }
                 }
 
                 console.log(`[WORKER] [Job:${job.id}] Dispatching message to ${jid} (Auto-formatted)...`);
