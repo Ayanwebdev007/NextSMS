@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.8');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.9');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
@@ -50,6 +50,22 @@ app.get('/api/test', (req, res) => res.json({
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', uptime: process.uptime() });
+});
+
+app.get('/api/debug/status', (req, res) => {
+  const activeClients = Object.keys(clients).map(id => ({
+    id,
+    status: clients[id].status,
+    hasSock: !!clients[id].sock,
+    hasUser: !!clients[id].sock?.user
+  }));
+
+  res.json({
+    instance: `${os.hostname()}-${process.pid}`,
+    version: '1.1.9',
+    activeClients,
+    redis: process.env.REDIS_URL ? 'URL SET' : `${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
+  });
 });
 // Dummy root removed to allow React app to load via static middleware
 

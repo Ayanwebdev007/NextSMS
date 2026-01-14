@@ -35,14 +35,21 @@ export const sendMessage = asyncHandler(async (req, res) => {
         status: "queued"
     });
 
-    await messageQueue.add("send-message", {
-        messageId: messageRecord._id.toString(),
-        businessId: businessId.toString(),
-        recipient,
-        text,
-        filePath,
-        mediaUrl,
-    });
+    console.log(`[QUEUE] Adding Job to nextsms_prod_v1 for ${recipient}...`);
+    try {
+        await messageQueue.add("send-message", {
+            messageId: messageRecord._id.toString(),
+            businessId: businessId.toString(),
+            recipient,
+            text,
+            filePath,
+            mediaUrl,
+        });
+        console.log(`[QUEUE] ✅ Job added successfully for ${recipient}`);
+    } catch (err) {
+        console.error(`[QUEUE] ❌ Failed to add job:`, err.message);
+        throw err;
+    }
 
     return res.status(202).json({
         message: "Message has been queued for sending.",

@@ -40,19 +40,25 @@ export const startCampaign = asyncHandler(async (req, res) => {
         console.log(`Campaign ${campaign._id} scheduled with a delay of ${delay}ms.`);
     }
 
+    console.log(`[QUEUE] Campaign ${campaign._id}: Adding ${recipients.length} jobs to nextsms_prod_v1...`);
     for (const item of recipients) {
         // 'item' is now { phoneNumber, variables }
-        await messageQueue.add('send-message', {
-            businessId: businessId.toString(),
-            campaignId: campaign._id.toString(),
-            recipient: item.phoneNumber,
-            variables: item.variables, // Pass variables to worker
-            text: message,
-            filePath: filePath,
-            minDelay: minDelay || 4000, // Pass delay range to worker
-            maxDelay: maxDelay || 10000
-        }, jobOptions);
+        try {
+            await messageQueue.add('send-message', {
+                businessId: businessId.toString(),
+                campaignId: campaign._id.toString(),
+                recipient: item.phoneNumber,
+                variables: item.variables, // Pass variables to worker
+                text: message,
+                filePath: filePath,
+                minDelay: minDelay || 4000, // Pass delay range to worker
+                maxDelay: maxDelay || 10000
+            }, jobOptions);
+        } catch (err) {
+            console.error(`[QUEUE] ❌ Campaign ${campaign._id}: Failed to add job for ${item.phoneNumber}:`, err.message);
+        }
     }
+    console.log(`[QUEUE] ✅ Campaign ${campaign._id}: Injection finished.`);
 
     const responseMessage = campaignStatus === 'scheduled'
         ? 'Campaign has been successfully scheduled.'

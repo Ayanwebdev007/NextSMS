@@ -310,4 +310,9 @@ export const startWorker = async () => {
     worker.on("failed", (job, err) => {
         console.log(`[WORKER] Job ${job.id} failed: ${err.message}`);
     });
+
+    // 🕵️ WORKER HEARTBEAT (Proves worker is not hung)
+    setInterval(() => {
+        console.log(`[WORKER] [${INSTANCE_ID}] Active & Polling nextsms_prod_v1...`);
+    }, 60000); // 1m check
 };
