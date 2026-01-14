@@ -27,14 +27,23 @@ jobs:
             # Install dependencies and build
             echo "Building Client..."
             cd client
-            # Clear old build to ensure clean state
-            rm -rf dist
             # Use verbose logging to catch install issues
             npm install --no-audit --no-fund --loglevel verbose
-            # CI=false prevents warnings from failing the build
-            # Increased memory to 2GB for stability
-            echo "Running build with CI=false..."
-            CI=false NODE_OPTIONS=--max-old-space-size=2048 npm run build
+            
+            # Safe Build: Use temporary directory to verify build before swapping
+            echo "Running build to temporary directory..."
+            rm -rf dist_new
+            CI=false NODE_OPTIONS=--max-old-space-size=2048 npm run build -- --outDir dist_new
+            
+            # Verify build integrity
+            if [ ! -f "dist_new/index.html" ]; then
+              echo "❌ CRITICAL ERROR: index.html missing in build output. Aborting deployment to save live site."
+              exit 1
+            fi
+            
+            echo "Build verified. Updating live dist..."
+            rm -rf dist
+            mv dist_new dist
             
             echo "Installing Server dependencies..."
             cd ../server
