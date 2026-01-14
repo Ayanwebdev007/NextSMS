@@ -35,16 +35,29 @@ export const sendMessage = asyncHandler(async (req, res) => {
         status: "queued"
     });
 
+    // Add job to BullMQ
     console.log(`[QUEUE] Adding Job to nextsms_prod_v1 for ${recipient}...`);
     try {
-        await messageQueue.add("send-message", {
+        const jobData = {
             messageId: messageRecord._id.toString(),
             businessId: businessId.toString(),
             recipient,
             text,
-            filePath,
             mediaUrl,
+            filePath,
+        };
+
+        // SCALABILITY FIX: Group jobs by businessId for fair scheduling
+        await messageQueue.add(`send_${businessId.toString()}`, jobData, {
+            attempts: 3,
+            backoff: {
+                type: 'exponential',
+                delay: 5000
+            },
+            removeOnComplete: 100,  // Keep last 100 completed jobs
+            removeOnFail: 200       // Keep last 200 failed jobs for debugging
         });
+
         console.log(`[QUEUE] ✅ Job added successfully for ${recipient}`);
     } catch (err) {
         console.error(`[QUEUE] ❌ Failed to add job:`, err.message);
