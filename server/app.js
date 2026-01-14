@@ -179,25 +179,19 @@ const startServer = async (retries = 3) => {
 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`\n[CRITICAL] PORT ${PORT} IS BUSY.`);
-        if (retries > 0) {
-          console.log(`[AUTO-FIX] Killing blocker on port ${PORT}... (Attempt ${4 - retries}/3)`);
+        const delay = Math.min(retries * 5000, 30000); // Max 30s delay
+        console.error(`\n[CRITICAL] PORT ${PORT} IS BUSY (Attempt ${4 - retries}).`);
+        console.log(`[AUTO-FIX] Killing blocker and retrying in ${delay / 1000}s...`);
 
-          // Forcefully kill any process on port 5000
-          exec(`fuser -k -n tcp ${PORT} || lsof -t -i:${PORT} | xargs kill -9`, (e) => {
-            // Even if fuser finds nothing (exit code 1), we proceed to retry
-            console.log('[AUTO-FIX] Kill command executed. Waiting 5s for OS to release port...');
-
-            setTimeout(() => {
-              console.log('Retrying server start...');
-              try { server.close(); } catch (e) { }
-              startServer(retries - 1);
-            }, 5000);
-          });
-        } else {
-          console.error('[FATAL] Could not clear port 5000 after 3 attempts. Process will exit.');
-          process.exit(1);
-        }
+        // Forcefully kill any process on port 5000
+        exec(`fuser -k -n tcp ${PORT} || lsof -t -i:${PORT} | xargs kill -9`, (e) => {
+          setTimeout(() => {
+            console.log('[RETRY] Attempting server start...');
+            try { server.close(); } catch (e) { }
+            // CRITICAL: Never exit - just keep retrying with longer delays
+            startServer(retries > 0 ? retries - 1 : 1);
+          }, delay);
+        });
       } else {
         throw err;
       }
