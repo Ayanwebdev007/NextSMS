@@ -206,22 +206,16 @@ export const initializeClient = async (businessId) => {
     try {
         const { state, saveCreds } = await useMongoDBAuthState(businessId);
 
-        const socketId = Math.random().toString(36).substring(7);
-        console.log(`[WhatsApp] [Instance:${socketId}] Creating new socket for ${businessId}`);
-
         const sock = makeWASocket({
             auth: state,
-            logger: pino({ level: "error" }), // Changed from silent to error for better debugging
-            printQRInTerminal: false,
-            browser: Browsers.ubuntu('Chrome')
+            logger: pino({ level: "silent" }),
         });
 
         const session = {
             sock,
             qr: null,
             status: "initializing",
-            reconnectAttempts: 0,
-            socketId: socketId
+            reconnectAttempts: 0
         };
         clients[businessId] = session;
         // initializing.delete(businessId); // This was moved to connection.update and catch block
@@ -267,27 +261,20 @@ export const initializeClient = async (businessId) => {
 
             if (connection === "close") {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const errorMessage = lastDisconnect?.error?.message || "Unknown error";
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-                console.warn(`[WhatsApp] [Instance:${session.socketId}] Connection closed for ${businessId}. Status: ${statusCode} (${errorMessage}). Reconnect: ${shouldReconnect}`);
+                console.warn(`[WhatsApp] Connection closed for ${businessId}. Status: ${statusCode || 'unknown'}. Reconnect: ${shouldReconnect}`);
 
                 session.status = "disconnected";
                 session.qr = null;
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
                 if (shouldReconnect) {
-                    // 🛑 MAX RETRY CHECK
-                    if (session.reconnectAttempts >= 5) {
-                        console.error(`[WhatsApp] Max retries (5) reached for ${businessId}. Clearing corrupted session from DB to force new QR.`);
-                        await SessionStore.deleteOne({ businessId });
-                        session.reconnectAttempts = 0;
-                        // The next initializeClient will now find no session and start fresh
-                    }
-
-                    const delay = Math.min(Math.pow(2, session.reconnectAttempts) * 1000, 30000);
+                    // ZERO-DELETION: We no longer wipe the session after N attempts.
+                    // We just keep retrying with exponential backoff.
+                    const delay = Math.min(Math.pow(2, Math.min(session.reconnectAttempts, 6)) * 1000, 30000);
                     session.reconnectAttempts++;
-                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s...`);
+                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${session.reconnectAttempts})`);
 
                     // Cleanup memory but NOT folder
                     delete clients[businessId];
