@@ -66,8 +66,9 @@ export const startWorker = async () => {
                 const { SessionStore } = await import("./models/sessionStore.model.js");
                 const sessionEntry = await SessionStore.findOne({ businessId });
                 if (sessionEntry && sessionEntry.masterId && sessionEntry.masterId !== INSTANCE_ID) {
-                    console.log(`[WORKER] [Job:${job.id}] Delaying - Managed by another instance (${sessionEntry.masterId})`);
-                    throw new Error(`RETRY_LATER: Managed by instance ${sessionEntry.masterId}`);
+                    console.log(`[WORKER] [Job:${job.id}] Managed by another instance (${sessionEntry.masterId}). Rescheduling...`);
+                    await job.moveToDelayed(Date.now() + 5000);
+                    return;
                 }
 
                 // 🔍 Session Check (Consumer Only - No Competing Init)
