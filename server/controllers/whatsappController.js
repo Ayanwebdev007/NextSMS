@@ -48,6 +48,17 @@ const useMongoDBAuthState = async (businessId) => {
         creds = initAuthCreds();
     }
 
+    // CRITICAL: In-memory cache for session keys to prevent DB read delays
+    const keyCache = {};
+    if (existingSession?.data) {
+        // Pre-load all existing keys into memory
+        for (const type in existingSession.data) {
+            if (type !== 'creds') {
+                keyCache[type] = existingSession.data[type];
+            }
+        }
+    }
+
     // 2. Save Function (Accepts partial updates)
     const saveCreds = async (update) => {
         try {
@@ -78,11 +89,11 @@ const useMongoDBAuthState = async (businessId) => {
             creds,
             keys: {
                 get: async (type, ids) => {
-                    const session = await SessionStore.findOne({ businessId });
                     const data = {};
-                    if (session?.data?.[type]) {
+                    // CRITICAL FIX: Read from in-memory cache first
+                    if (keyCache[type]) {
                         for (const id of ids) {
-                            const val = session.data[type][id];
+                            const val = keyCache[type][id];
                             if (val) {
                                 data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
                             }
@@ -96,13 +107,20 @@ const useMongoDBAuthState = async (businessId) => {
                         const deletions = {};
 
                         for (const type in data) {
+                            // Update in-memory cache immediately
+                            if (!keyCache[type]) keyCache[type] = {};
+
                             for (const id in data[type]) {
                                 const val = data[type][id];
-                                const keyPath = `data.${type}.${id}`; // atomic path
+                                const keyPath = `data.${type}.${id}`;
                                 if (val) {
-                                    updates[keyPath] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                    // Save to cache and prepare DB update
+                                    keyCache[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                    updates[keyPath] = keyCache[type][id];
                                 } else {
-                                    deletions[keyPath] = 1; // Mark for $unset
+                                    // Delete from cache and mark for DB deletion
+                                    delete keyCache[type][id];
+                                    deletions[keyPath] = 1;
                                 }
                             }
                         }
@@ -112,7 +130,7 @@ const useMongoDBAuthState = async (businessId) => {
                         if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
                         if (Object.keys(operations).length > 0) {
-                            // CRITICAL FIX: Don't await - fire and forget to prevent blocking sendMessage
+                            // Fire and forget to DB (cache is already updated)
                             SessionStore.updateOne({ businessId }, operations, { upsert: true }).catch(err => {
                                 console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
                             });
