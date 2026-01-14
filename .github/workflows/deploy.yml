@@ -27,8 +27,7 @@ jobs:
             # Install dependencies and build
             echo "Building Client..."
             cd client
-            # Use verbose logging to catch install issues
-            npm install --no-audit --no-fund --loglevel verbose
+            npm install --no-audit --no-fund
             
             # Safe Build: Use temporary directory to verify build before swapping
             echo "Running build to temporary directory..."
@@ -41,7 +40,8 @@ jobs:
               exit 1
             fi
             
-            echo "Build verified. Updating live dist..."
+            echo "Build verified. Swapping dist..."
+            # Use 'rm -rf' on dist; permissions should be fine now after manual 'chown'
             rm -rf dist
             mv dist_new dist
             
@@ -52,8 +52,9 @@ jobs:
             # Restart Application cleanly
             cd ..
             echo "Reloading PM2..."
+            # Force restart with full configuration to ensure env/paths are refreshed
             pm2 delete nextsms-server || true
-            pm2 start ecosystem.config.js
+            pm2 start ecosystem.config.js --name nextsms-server
             pm2 save
             
             echo "✅ Deployment Successful!"
