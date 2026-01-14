@@ -112,12 +112,15 @@ const useMongoDBAuthState = async (businessId) => {
                         if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
                         if (Object.keys(operations).length > 0) {
-                            await SessionStore.updateOne({ businessId }, operations, { upsert: true });
+                            // CRITICAL FIX: Don't await - fire and forget to prevent blocking sendMessage
+                            SessionStore.updateOne({ businessId }, operations, { upsert: true }).catch(err => {
+                                console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
+                            });
                             console.log(`[AUTH] Atomic keys updated for ${businessId} (${Object.keys(updates).length} set, ${Object.keys(deletions).length} del)`);
                         }
                     } catch (err) {
                         console.error(`[AUTH] Failed to save keys for ${businessId}:`, err.message);
-                        throw err;
+                        // Don't throw - allow Baileys to continue
                     }
                 }
             }
