@@ -7,7 +7,10 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config();
+
+// Explicitly point to the .env file in the server directory
+const envPath = path.join(__dirname, '.env');
+dotenv.config({ path: envPath });
 import cors from 'cors';
 
 import connectDB from './db/db.js';
