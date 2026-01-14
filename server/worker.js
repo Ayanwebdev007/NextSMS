@@ -37,7 +37,7 @@ export const startWorker = async () => {
     console.log("[WORKER] Initializing Baileys message worker...");
 
     worker = new Worker(
-        "messages",
+        "nextsms_prod_v1",
         async (job) => {
             const { messageId, businessId, campaignId, recipient, text, mediaUrl, filePath, variables, minDelay, maxDelay } =
                 job.data;
@@ -176,7 +176,10 @@ export const startWorker = async () => {
                 console.log(`[WORKER] [Job:${job.id}] Dispatching message to ${jid} (Auto-formatted)...`);
 
                 try {
-                    await sock.sendMessage(jid, messagePayload);
+                    const result = await sock.sendMessage(jid, messagePayload);
+                    if (result) {
+                        console.log(`[WORKER] [Job:${job.id}] 🟢 WhatsApp ACK: Message accepted by server for ${jid}`);
+                    }
                 } catch (sendError) {
                     // RETRY once if it looks like a transient network error
                     console.error(`[WORKER] [Job:${job.id}] Send Error: ${sendError.message}. Attempting recovery retry...`);

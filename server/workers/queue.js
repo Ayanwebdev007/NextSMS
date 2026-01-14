@@ -12,4 +12,4 @@ const connection = process.env.REDIS_URL
 
 // This file now only defines and exports the queue.
 // The worker process will listen for jobs on this same 'messages' queue.
-export const messageQueue = new Queue('messages', { connection });
+export const messageQueue = new Queue('nextsms_prod_v1', { connection });

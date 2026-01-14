@@ -215,7 +215,7 @@ setInterval(async () => {
             );
         } catch (e) { }
     }
-}, 30000); // 30s heartbeat
+}, 10000); // 10s heartbeat
 
 /* =======================
    RESTORE SESSIONS
