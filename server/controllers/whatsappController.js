@@ -269,24 +269,37 @@ export const initializeClient = async (businessId) => {
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
                 if (shouldReconnect) {
-                    // ZERO-DELETION: We no longer wipe the session after N attempts.
-                    // We just keep retrying with exponential backoff.
-                    const currentAttempts = clients[businessId]?.reconnectAttempts || 0;
-                    const nextAttempts = currentAttempts + 1;
+                    // Backoff logic
+                    const session = clients[businessId] || { reconnectAttempts: 0 };
+                    const nextAttempts = (session.reconnectAttempts || 0) + 1;
 
-                    // Special handling for 440: Longer backoff to let the other instance clear
+                    // Special handling for 440 Conflict
                     const isConflict = statusCode === 440;
-                    const baseDelay = isConflict ? 5000 : 1000;
-                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
+                    if (isConflict) {
+                        console.warn(`[WhatsApp] 440 Conflict detected for ${businessId}. Attempting stream reset while preserving login...`);
+                        try {
+                            // Clear KEYS but keep CREDS (This solves 440 without QR re-scan)
+                            await SessionStore.findOneAndUpdate(
+                                { businessId },
+                                { $set: { "data.keys": {} } }
+                            );
+                            console.log(`[WhatsApp] Stream keys cleared for ${businessId}.`);
+                        } catch (err) {
+                            console.error(`[WhatsApp] Failed to clear keys for ${businessId}:`, err.message);
+                        }
+                    }
+
+                    const baseDelay = isConflict ? 10000 : 1000; // 10s base for conflict
+                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 90000);
 
                     console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts})`);
 
-                    // PRESERVE memory session but mark as disconnected
-                    if (clients[businessId]) {
-                        clients[businessId].status = "disconnected";
-                        clients[businessId].reconnectAttempts = nextAttempts;
-                        // Keep the sock object but it's dead
-                    }
+                    // PRESERVE memory session and increment attempts
+                    clients[businessId] = {
+                        ...session,
+                        status: "disconnected",
+                        reconnectAttempts: nextAttempts
+                    };
 
                     initializing.delete(businessId);
                     setTimeout(() => initializeClient(businessId), delay);
