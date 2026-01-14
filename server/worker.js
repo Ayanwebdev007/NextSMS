@@ -77,10 +77,10 @@ export const startWorker = async () => {
 
                     if (!clientData || clientData.status !== "ready") {
                         if (business && business.sessionStatus === "connected") {
-                            // If DB says connected but we don't have it, trigger a re-initialization and retry the job
-                            console.warn(`[WORKER] [Job:${job.id}] Session missing/dead in memory but DB says connected. Triggering re-init...`);
-                            initializeClient(businessId); // This is safe; it has a guard inside
-                            await job.moveToDelayed(Date.now() + 5000); // Retry sooner
+                            // If DB says connected but we don't have it, just wait.
+                            // The main server's restoreSessions or reconnection loop will handle this.
+                            console.log(`[WORKER] [Job:${job.id}] Session missing in memory but DB says connected. Waiting for server to restore...`);
+                            await job.moveToDelayed(Date.now() + 10000);
                             return;
                         }
                         throw new Error(`WhatsApp not connected (Status: ${business?.sessionStatus || 'disconnected'})`);
