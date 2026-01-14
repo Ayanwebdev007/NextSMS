@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.9');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.10');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
@@ -156,7 +156,7 @@ app.use((req, res, next) => {
   });
 });
 
-const PORT = 5005; // HARDCODED TO BYPASS GHOST PROCESS ON 5000
+const PORT = 5000; // REALIGNED TO NGINX DEFAULT
 const server = app.listen(PORT, () => {
   console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
   console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
