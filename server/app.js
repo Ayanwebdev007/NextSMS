@@ -163,7 +163,9 @@ let server;
 
 const startServer = async (retries = 3) => {
   try {
-    server = app.listen(PORT, () => {
+    server = app.listen(PORT); // Logs moved to 'listening' event to avoid race conditions
+
+    server.on('listening', () => {
       console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
       console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
     });

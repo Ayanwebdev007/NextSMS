@@ -408,10 +408,13 @@ export const initializeClient = async (businessId) => {
                     // Just log it and rely on the Master Lock to eventually resolve the conflict.
                     const isConflict = statusCode === 440;
                     if (isConflict) {
-                        console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Retrying without modifications...`);
+                        console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Waiting 15s to let other instance die...`);
                     }
 
-                    if (nextAttempts >= 10) {
+                    // CRITICAL FIX: Infinite Retry for 440 Conflicts
+                    // If we are fighting for control (440), we must NOT give up.
+                    // The "other" session will eventually timeout or be killed by fuser.
+                    if (!isConflict && nextAttempts >= 10) {
                         console.error(`[WhatsApp] Max reconnect attempts (10) reached for ${businessId}. Stopping retry loop.`);
                         delete clients[businessId];
                         initializing.delete(businessId);
@@ -419,10 +422,10 @@ export const initializeClient = async (businessId) => {
                         return;
                     }
 
-                    const baseDelay = isConflict ? 10000 : 2000;
-                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000); // MAX wait 60s
+                    const baseDelay = isConflict ? 15000 : 2000; // 15s delay for conflicts
+                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
 
-                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts}/10)`);
+                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts}${isConflict ? ' - CONFLICT LOOP' : '/10'})`);
 
                     clients[businessId] = {
                         ...sessionState,
