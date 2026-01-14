@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.18');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.19');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
@@ -64,7 +64,7 @@ app.get('/api/debug/status', (req, res) => {
 
   res.json({
     instance: `${os.hostname()}-${process.pid}`,
-    version: '1.1.18',
+    version: '1.1.19',
     activeClients,
     redis: process.env.REDIS_URL ? 'URL SET' : `${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
   });
@@ -158,24 +158,43 @@ app.use((req, res, next) => {
   });
 });
 
-const PORT = 5000; // REALIGNED TO NGINX DEFAULT
-const server = app.listen(PORT, () => {
-  console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
-  console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
-}).on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`\n[CRITICAL] PORT ${PORT} IS BLOCKED. ATTEMPTING SELF-HEALING...`);
-    exec(`fuser -k ${PORT}/tcp`, (error, stdout, stderr) => {
-      if (error) console.error(`[AUTO-FIX] Kill failed: ${error.message}`);
-      else console.log(`[AUTO-FIX] Ghost process killed. Restarting...`);
+const PORT = 5000;
+let server;
 
-      // Wait 1s and exit to let PM2 restart us (now with free port)
-      setTimeout(() => process.exit(1), 1000);
+const startServer = async (retries = 3) => {
+  try {
+    server = app.listen(PORT, () => {
+      console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
+      console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
     });
-  } else {
-    throw err;
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\n[CRITICAL] PORT ${PORT} IS BUSY.`);
+        if (retries > 0) {
+          console.log(`[AUTO-FIX] Killing blocker on port ${PORT}... (Attempt ${4 - retries}/3)`);
+          exec(`fuser -k ${PORT}/tcp`, (e) => {
+            // Wait 3s ensures port is truly free
+            setTimeout(() => {
+              console.log('Retrying server start...');
+              server.close();
+              startServer(retries - 1);
+            }, 3000);
+          });
+        } else {
+          console.error('[FATAL] Could not clear port 5000 after 3 attempts.');
+          process.exit(1);
+        }
+      } else {
+        throw err;
+      }
+    });
+  } catch (e) {
+    console.error('Server start error:', e);
   }
-});
+};
+
+startServer();
 
 // --- Global Error Handler --- //
 app.use((err, req, res, next) => {
