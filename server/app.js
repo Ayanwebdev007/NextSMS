@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.4');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.5');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';

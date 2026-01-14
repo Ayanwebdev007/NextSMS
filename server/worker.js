@@ -66,10 +66,8 @@ export const startWorker = async () => {
                 const { SessionStore } = await import("./models/sessionStore.model.js");
                 const sessionEntry = await SessionStore.findOne({ businessId });
                 if (sessionEntry && sessionEntry.masterId && sessionEntry.masterId !== INSTANCE_ID) {
-                    console.log(`[WORKER] [Job:${job.id}] Discarding - Business is managed by another instance (${sessionEntry.masterId})`);
-                    // If we are not the master, we shouldn't even attempt to process this.
-                    // Another server's worker will handle it.
-                    return;
+                    console.log(`[WORKER] [Job:${job.id}] Delaying - Managed by another instance (${sessionEntry.masterId})`);
+                    throw new Error(`RETRY_LATER: Managed by instance ${sessionEntry.masterId}`);
                 }
 
                 // 🔍 Session Check (Consumer Only - No Competing Init)
