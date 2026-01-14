@@ -140,9 +140,10 @@ app.use((req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5005;
 const server = app.listen(PORT, () => {
-  console.log('listening on port', PORT);
+  console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
+  console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
 });
 
 // --- Global Error Handler --- //
