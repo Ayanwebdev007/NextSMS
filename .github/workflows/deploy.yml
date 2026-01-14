@@ -17,31 +17,34 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.NEXTSMS_VPS }}
           script: |
-            # Navigate to project directory (Adjust path if needed)
+            # Navigation and Visibility
+            echo "Current Directory: $(pwd)"
             cd /var/www/nextsms.co.in/next_sms
+            echo "Working Directory: $(pwd)"
 
             # Force sync with GitHub
             git fetch origin main
             git reset --hard origin/main
             echo "Current Commit: $(git rev-parse HEAD)"
+            
+            # Verify the code on disk matches what we expect
+            echo "CONTENT CHECK (server/app.js line 2):"
+            head -n 2 server/app.js
+            echo "CONTENT CHECK (server/controllers/whatsappController.js grep):"
+            grep "Atomic keys updated" server/controllers/whatsappController.js || echo "❌ ERROR: New code NOT FOUND on disk!"
 
             # Install dependencies and build
             echo "Building Client..."
             cd client
             npm install --no-audit --no-fund
-            
-            # Safe Build: Use temporary directory to verify build before swapping
-            echo "Running build to temporary directory..."
             rm -rf dist_new
             CI=false NODE_OPTIONS=--max-old-space-size=2048 npm run build -- --outDir dist_new
             
-            # Verify build integrity
             if [ ! -f "dist_new/index.html" ]; then
-              echo "❌ CRITICAL ERROR: index.html missing in build output. Aborting deployment."
+              echo "❌ CRITICAL ERROR: index.html missing in build output."
               exit 1
             fi
             
-            echo "Build verified. Swapping dist..."
             rm -rf dist
             mv dist_new dist
             
@@ -51,13 +54,16 @@ jobs:
             
             # Restart Application cleanly
             cd ..
-            echo "Verified directory contents for server/controllers/whatsappController.js:"
-            grep -C 2 "Atomic" server/controllers/whatsappController.js || echo "Atomic not found in controller!"
-            
             echo "Reloading PM2..."
-            # Using reload + start to ensure Zero Downtime if possible, or force restart if needed
+            # Force kill everything to ensure no ghost processes
+            pm2 stop nextsms-server || true
             pm2 delete nextsms-server || true
+            # Verify it's gone
+            pm2 list
+            
+            # Start fresh
             pm2 start ecosystem.config.js --name nextsms-server --env production
             pm2 save
             
-            echo "✅ Deployment Successful! Check logs with: pm2 logs nextsms-server"
+            echo "✅ Deployment Successful! Process ID and Status:"
+            pm2 status nextsms-server
