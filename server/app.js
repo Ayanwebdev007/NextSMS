@@ -103,7 +103,14 @@ import mediaRoutes from './routes/mediaRoutes.js';
 import placeholderRoutes from './routes/placeholderRoutes.js';
 
 app.use('/uploads', express.static('uploads'));
-//  all routes 
+// --- 1. Diagnostic Routes (Top Priority) --- //
+app.get('/ping', (req, res) => res.send('pong'));
+app.get('/api/test', (req, res) => res.json({
+  message: 'API is reachable',
+  time: new Date().toISOString()
+}));
+
+// --- 2. Middleware & All API Routes --- //
 app.use('/api/auth', authRoutes);
 app.use('/api/plans', planRoutes);
 app.use('/api/session', whatsappRoutes);
@@ -116,51 +123,20 @@ app.use('/api/history', historyRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/placeholders', placeholderRoutes);
-
-// --- Debug Testing --- //
-app.get('/api/debug/env', (req, res) => {
-  res.json({
-    googleId: process.env.GOOGLE_CLIENT_ID ? 'LOADED' : 'MISSING',
-    nodeEnv: process.env.NODE_ENV,
-    coopHeader: 'Ready'
-  });
-});
-
-app.get('/api/debug/error', (req, res) => {
-  throw new Error('TEST ERROR: Logging and Global Handler Check');
-});
-
-// Other payment routes
 app.use('/api/payment', paymentRoutes);
 
-// --- Serve Frontend in Production --- //
-const clientBuildPath = path.resolve(__dirname, '../client/dist');
-const indexPath = path.join(clientBuildPath, 'index.html');
-
-console.log('[SERVER] 📁 Client Build Path:', clientBuildPath);
-import fs from 'fs';
-if (fs.existsSync(indexPath)) {
-  console.log('[SERVER] ✅ index.html found at:', indexPath);
-} else {
-  console.error('[SERVER] ❌ index.html NOT FOUND at:', indexPath);
-  console.log('[SERVER] 📂 Contents of dist:', fs.existsSync(clientBuildPath) ? fs.readdirSync(clientBuildPath) : 'dist folder missing');
-}
-
+// --- 3. Static Files --- //
+app.use('/uploads', express.static('uploads'));
 app.use(express.static(clientBuildPath));
 
-// Diagnostic route moved to top
-
-// Final Catch-all for SPA (Middleware style to avoid regex errors)
-app.use((req, res, next) => {
-  if (req.method !== 'GET' || req.originalUrl.startsWith('/api')) {
-    return next();
-  }
-
+// --- 4. THE ULTIMATE CATCH-ALL (SPA Support) --- //
+// This MUST be the last route. It catches everything and sends it to React.
+app.get('*', (req, res) => {
   const indexPath = path.join(clientBuildPath, 'index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
-      console.error('[SERVER ERROR] Failed to send index.html:', err.message);
-      res.status(500).send('Frontend build is missing.');
+      console.error('[CRITICAL] Frontend index.html missing at:', indexPath);
+      res.status(500).send('Frontend build not found. Please run "npm run build" in the client folder.');
     }
   });
 });
