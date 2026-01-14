@@ -24,21 +24,22 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Install dependencies and Build Frontend
-            echo "Building Frontend (this may take a minute)..."
+            # Install dependencies and build
+            echo "Building Client..."
             cd client
             npm install --no-audit --no-fund
-            npm run build
+            # Use limited memory for build to prevent VPS crash
+            NODE_OPTIONS=--max-old-space-size=1024 npm run build
             
-            # Install Server dependencies
-            echo "Updating Server..."
+            echo "Installing Server dependencies..."
             cd ../server
             npm install --no-audit --no-fund
             
             # Restart Application cleanly
-            echo "Restarting application..."
             cd ..
-            pm2 restart nextsms-server --update-env || pm2 start ecosystem.config.js --env production
+            echo "Reloading PM2..."
+            pm2 delete nextsms-server || true
+            pm2 start ecosystem.config.js
             pm2 save
             
-            echo "✅ DEPLOYMENT COMPLETE!"
+            echo "✅ Deployment Successful!"

@@ -50,12 +50,8 @@ const ApiPage = () => {
   };
 
   // --- THIS IS THE FIX ---
-  // Derive the API URL dynamically to avoid hardcoded Render URLs
-  const currentOrigin = window.location.origin;
-  const apiBase = import.meta.env.VITE_API_BASE_URL || `${currentOrigin}/api`;
-  const userPhone = user?.phone || "919876543210";
-
-  const exampleUrl = `${apiBase}/whatsapp/send?receiver=${userPhone}&msgtext=Hello&mediaUrl=https://...&token=${apiKey || "YOUR_API_KEY"}`;
+  // The exampleUrl constant is now back in the component.
+  const exampleUrl = `${window.location.origin}/api/whatsapp/send?receiver=91...&msgtext=Hello&mediaUrl=https://...&token=${apiKey || "YOUR_API_KEY"}`;
 
   if (isLoading) {
     return (
@@ -154,7 +150,7 @@ const ApiPage = () => {
 
       {renderContent()}
 
-      {user && user.credits > 100 && <ApiDocs apiKey={apiKey} userPhone={user?.phone} />}
+      {user && user.credits > 100 && <ApiDocs apiKey={apiKey} />}
     </div>
   );
 };

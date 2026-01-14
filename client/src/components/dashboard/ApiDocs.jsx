@@ -29,13 +29,11 @@ const CodeBlock = ({ code, language }) => {
 };
 
 
-const ApiDocs = ({ apiKey, userPhone }) => {
+const ApiDocs = ({ apiKey }) => {
     if (!apiKey) return null;
 
-    const currentOrigin = window.location.origin;
-    const apiBase = import.meta.env.VITE_API_BASE_URL || `${currentOrigin}/api`;
-    const baseUrl = `${apiBase}/whatsapp/send`;
-    const exampleReceiver = userPhone || "919876543210";
+    const baseUrl = `${window.location.origin}/api/whatsapp/send`;
+    const exampleReceiver = "919876543210";
     const exampleMessage = "Check out this amazing photo!";
     // 1. Add an example media URL for the documentation
     const exampleMediaUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Taj_Mahal_in_India_-_Kristian_Bertel.jpg/1280px-Taj_Mahal_in_India_-_Kristian_Bertel.jpg";
@@ -79,7 +77,7 @@ else:
 
     // Sandbox State
     const [sandboxData, setSandboxData] = useState({
-        receiver: userPhone || '',
+        receiver: '',
         message: 'Hello from NextSMS!',
         mediaUrl: ''
     });

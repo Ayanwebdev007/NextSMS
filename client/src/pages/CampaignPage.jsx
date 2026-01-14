@@ -268,7 +268,7 @@ const CampaignsPage = () => {
     isSubmitting || isUploadingMedia || user?.sessionStatus !== "connected";
 
   const getRootUrl = () => {
-    const base = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://nextsms-backend.onrender.com';
+    const base = window.location.origin;
     return base.replace(/\/api$/, '').replace(/\/$/, '');
   };
   const API_URL = getRootUrl();
