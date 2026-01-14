@@ -3,7 +3,7 @@ import "./env.js";
 import bullmq from "bullmq";
 const { Worker } = bullmq;
 
-import { clients, restoreSessions } from "./controllers/whatsappController.js";
+import { clients, restoreSessions, initializeClient } from "./controllers/whatsappController.js";
 import { Business } from "./models/business.model.js";
 import { Message } from "./models/message.model.js";
 import { Campaign } from "./models/campaign.model.js";
@@ -40,7 +40,8 @@ export const startWorker = async () => {
             const { messageId, businessId, campaignId, recipient, text, mediaUrl, filePath, variables, minDelay, maxDelay } =
                 job.data;
 
-            console.log(`[WORKER] [Job:${job.id}] Processing for ${recipient} (Business: ${businessId})`);
+            const startTime = Date.now();
+            console.log(`\n[WORKER] [Job:${job.id}] 📨 Start processing for ${recipient} (Business: ${businessId})`);
 
             // 📊 Log available sessions for debugging
             const activeSessions = Object.keys(clients);
@@ -76,9 +77,10 @@ export const startWorker = async () => {
 
                     if (!clientData || clientData.status !== "ready") {
                         if (business && business.sessionStatus === "connected") {
-                            // If DB says connected but we don't have it, retry the job later
-                            console.warn(`[WORKER] [Job:${job.id}] Session supposed to be connected but not ready in memory. Retrying in 10s...`);
-                            await job.moveToDelayed(Date.now() + 10000);
+                            // If DB says connected but we don't have it, trigger a re-initialization and retry the job
+                            console.warn(`[WORKER] [Job:${job.id}] Session missing/dead in memory but DB says connected. Triggering re-init...`);
+                            initializeClient(businessId); // This is safe; it has a guard inside
+                            await job.moveToDelayed(Date.now() + 5000); // Retry sooner
                             return;
                         }
                         throw new Error(`WhatsApp not connected (Status: ${business?.sessionStatus || 'disconnected'})`);
@@ -194,7 +196,7 @@ export const startWorker = async () => {
                     }
                 }
 
-                console.log(`[WORKER] [Job:${job.id}] Message sent to ${recipient}`);
+                console.log(`[WORKER] [Job:${job.id}] ✅ Message sent to ${recipient} in ${Date.now() - startTime}ms`);
 
                 // 💳 Update credits & Campaign counts
                 await Business.findByIdAndUpdate(businessId, { $inc: { credits: -1 } });

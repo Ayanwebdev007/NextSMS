@@ -206,16 +206,22 @@ export const initializeClient = async (businessId) => {
     try {
         const { state, saveCreds } = await useMongoDBAuthState(businessId);
 
+        const socketId = Math.random().toString(36).substring(7);
+        console.log(`[WhatsApp] [Instance:${socketId}] Creating new socket for ${businessId}`);
+
         const sock = makeWASocket({
             auth: state,
-            logger: pino({ level: "silent" }),
+            logger: pino({ level: "error" }), // Changed from silent to error for better debugging
+            printQRInTerminal: false,
+            browser: Browsers.ubuntu('Chrome')
         });
 
         const session = {
             sock,
             qr: null,
             status: "initializing",
-            reconnectAttempts: 0
+            reconnectAttempts: 0,
+            socketId: socketId
         };
         clients[businessId] = session;
         // initializing.delete(businessId); // This was moved to connection.update and catch block
@@ -261,9 +267,10 @@ export const initializeClient = async (businessId) => {
 
             if (connection === "close") {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const errorMessage = lastDisconnect?.error?.message || "Unknown error";
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-                console.warn(`[WhatsApp] Connection closed for ${businessId}. Status: ${statusCode || 'unknown'}. Reconnect: ${shouldReconnect}`);
+                console.warn(`[WhatsApp] [Instance:${session.socketId}] Connection closed for ${businessId}. Status: ${statusCode} (${errorMessage}). Reconnect: ${shouldReconnect}`);
 
                 session.status = "disconnected";
                 session.qr = null;
