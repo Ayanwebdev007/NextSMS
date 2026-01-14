@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const clientBuildPath = path.resolve(__dirname, '../client/dist');
 import cors from 'cors';
 
 import connectDB from './db/db.js';
@@ -103,13 +104,6 @@ import mediaRoutes from './routes/mediaRoutes.js';
 import placeholderRoutes from './routes/placeholderRoutes.js';
 
 app.use('/uploads', express.static('uploads'));
-// --- 1. Diagnostic Routes (Top Priority) --- //
-app.get('/ping', (req, res) => res.send('pong'));
-app.get('/api/test', (req, res) => res.json({
-  message: 'API is reachable',
-  time: new Date().toISOString()
-}));
-
 // --- 2. Middleware & All API Routes --- //
 app.use('/api/auth', authRoutes);
 app.use('/api/plans', planRoutes);
