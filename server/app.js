@@ -112,6 +112,19 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/placeholders', placeholderRoutes);
 
+// --- Debug Testing --- //
+app.get('/api/debug/env', (req, res) => {
+  res.json({
+    googleId: process.env.GOOGLE_CLIENT_ID ? 'LOADED' : 'MISSING',
+    nodeEnv: process.env.NODE_ENV,
+    coopHeader: 'Ready'
+  });
+});
+
+app.get('/api/debug/error', (req, res) => {
+  throw new Error('TEST ERROR: Logging and Global Handler Check');
+});
+
 // Other payment routes
 app.use('/api/payment', paymentRoutes);
 
