@@ -2,7 +2,16 @@ import asyncHandler from 'express-async-handler';
 import { Business } from '../models/business.model.js';
 
 export const apiKeyAuth = asyncHandler(async (req, res, next) => {
-    const apiKey = req.query.token;
+    // 1. Check Authorization header (Bearer <key>)
+    let apiKey = req.headers.authorization?.startsWith('Bearer')
+        ? req.headers.authorization.split(' ')[1]
+        : null;
+
+    // 2. Fallback to x-api-key header
+    if (!apiKey) apiKey = req.headers['x-api-key'];
+
+    // 3. Fallback to query parameter (Legacy)
+    if (!apiKey) apiKey = req.query.token;
 
     if (!apiKey) {
         return res.status(401).json({ message: 'Not authorized, no API token provided.' });

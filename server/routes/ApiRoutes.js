@@ -5,5 +5,6 @@ import { apiKeyAuth } from '../middlewares/apiKeyAuth.js'
 const router = express.Router();
 
 router.get('/send', apiKeyAuth, sendSimpleMessage);
+router.post('/send', apiKeyAuth, sendSimpleMessage);
 
 export default router;

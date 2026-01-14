@@ -44,7 +44,7 @@ export const startCampaign = asyncHandler(async (req, res) => {
     for (const item of recipients) {
         // 'item' is now { phoneNumber, variables }
         try {
-            await messageQueue.add('send-message', {
+            await messageQueue.add(`send_${businessId.toString()}`, {
                 businessId: businessId.toString(),
                 campaignId: campaign._id.toString(),
                 recipient: item.phoneNumber,
