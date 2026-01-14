@@ -299,7 +299,11 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
-            browser: Browsers.ubuntu("Chrome") // Consistent fingerprint
+            browser: ["NextSMS", "Chrome", "1.0.0"], // Standardize browser
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 10000,
+            retryRequestDelayMs: 2000
         });
 
         // PRESERVE reconnectAttempts from memory or DB

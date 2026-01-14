@@ -108,7 +108,15 @@ export const startWorker = async () => {
                     await job.moveToDelayed(Date.now() + 5000);
                     return;
                 }
-                console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). Preparing payload...`);
+
+                // 🔌 SOCKET HEALTH CHECK (NEW)
+                if (sock.ws && sock.ws.isOpen === false) {
+                    console.warn(`[WORKER] [Job:${job.id}] ⚠️ Socket status is 'ready' BUT ws.isOpen is FALSE! Force-closing to trigger reconnect...`);
+                    try { sock.end(new Error('Socket dead in worker')); } catch (e) { }
+                    throw new Error("RETRY_LATER: Socket dead");
+                }
+
+                console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). WS Open: ${sock.ws?.isOpen}. Preparing payload...`);
 
                 // 🔗 Variable Replacement Logic
                 let processedText = text;
