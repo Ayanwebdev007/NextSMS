@@ -284,7 +284,7 @@ const ConnectionCard = () => {
                         disabled={isActionLoading || status === "initializing"}
                         className="flex-1 text-center font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
                     >
-                        Connect
+                        Connect Now
                     </button>
                 )}
                 {status === "qr_pending" && (
