@@ -299,7 +299,7 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
-            browser: ["NextSMS", "Chrome", "1.0.0"], // Standardize browser
+            browser: Browsers.ubuntu("Chrome"), // Matches existing session
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 60000,
             keepAliveIntervalMs: 10000,
