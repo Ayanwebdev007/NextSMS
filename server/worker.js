@@ -225,8 +225,12 @@ export const startWorker = async () => {
                         console.log(`[WORKER] [Job:${job.id}] 🟢 WhatsApp ACK: Message accepted by server for ${jid}`);
                     }
                 } catch (sendError) {
-                    // RETRY once if it looks like a transient network error
-                    console.error(`[WORKER] [Job:${job.id}] Send Error: ${sendError.message}. Attempting recovery retry...`);
+                    // DETAILED ERROR LOGGING
+                    console.error(`[WORKER] [Job:${job.id}] Send Error: ${sendError.message}`);
+                    console.error(`[WORKER] [Job:${job.id}] Error Stack: ${sendError.stack}`);
+                    console.error(`[WORKER] [Job:${job.id}] Socket State - User: ${!!sock.user}, AuthState: ${!!sock.authState}, Creds: ${!!sock.authState?.creds}, Me: ${!!sock.authState?.creds?.me}`);
+
+                    console.log(`[WORKER] [Job:${job.id}] Attempting recovery retry...`);
 
                     // Pause for 2s before retry
                     await new Promise(r => setTimeout(r, 2000));
