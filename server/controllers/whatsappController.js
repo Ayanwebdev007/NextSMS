@@ -306,12 +306,24 @@ export const initializeClient = async (businessId) => {
 
             if (connection === "open") {
                 console.log(`[WhatsApp] Connection opened for ${businessId}`);
+
+                // Clear any existing stability timer
+                if (session.stableTimer) clearTimeout(session.stableTimer);
+
                 session.status = "ready";
                 session.qr = null;
-                session.reconnectAttempts = 0;
                 initializing.delete(businessId); // Clear initializing set on successful connection
 
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
+
+                // Stable Reset: Only clear attempts if we stay connected for 30s
+                session.stableTimer = setTimeout(async () => {
+                    console.log(`[WhatsApp] [STABLE] Session ${businessId} has stayed open for 30s. Resetting backoff.`);
+                    session.reconnectAttempts = 0;
+                    try {
+                        await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: 0 } });
+                    } catch (e) { }
+                }, 30000);
 
                 // Presence update to keep alive
                 try {
@@ -339,6 +351,10 @@ export const initializeClient = async (businessId) => {
 
                 if (shouldReconnect) {
                     const sessionState = clients[businessId] || { reconnectAttempts: 0 };
+
+                    // Clear stability timer if it was running
+                    if (sessionState.stableTimer) clearTimeout(sessionState.stableTimer);
+
                     const nextAttempts = (sessionState.reconnectAttempts || 0) + 1;
 
                     // Persist attempts to DB so restart doesn't reset backoff

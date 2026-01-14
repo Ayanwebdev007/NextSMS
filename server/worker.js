@@ -103,6 +103,7 @@ export const startWorker = async () => {
                     return;
                 }
 
+                const sockState = sock.ws?.readyState;
                 if (sockState !== 1) { // 1 = OPEN
                     console.warn(`[WORKER] [Job:${job.id}] WebSocket not open (State: ${sockState}). Waiting...`);
                     throw new Error("RETRY_LATER: WebSocket opening");
