@@ -147,7 +147,7 @@ app.use(express.static(clientBuildPath));
 // The "catch-all" handler: for any request that doesn't
 // match one above, send back React's index.html file.
 // We use a regex /* to be safe with modern Express/path-to-regexp
-app.get('/*', (req, res) => {
+app.use((req, res) => {
   const indexPath = path.join(clientBuildPath, 'index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
