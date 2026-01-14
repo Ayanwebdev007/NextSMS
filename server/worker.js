@@ -88,6 +88,15 @@ export const startWorker = async () => {
                 }
 
                 const sock = clientData.sock;
+
+                // 🔍 Robust Connection Check
+                if (!sock || !sock.ws || sock.ws.readyState !== 1) { // 1 = OPEN
+                    console.log(`[WORKER] [Job:${job.id}] Socket not ready (State: ${sock?.ws?.readyState}). Triggering re-init and rescheduling...`);
+                    initializeClient(businessId);
+                    await job.moveToDelayed(Date.now() + 5000);
+                    return;
+                }
+
                 console.log(`[WORKER] [Job:${job.id}] Session verified. Preparing payload...`);
 
                 // 🔗 Variable Replacement Logic

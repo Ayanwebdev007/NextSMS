@@ -209,6 +209,10 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
+            browser: Browsers.ubuntu("Chrome"),
+            syncFullHistory: false,
+            linkPreview: false,
+            generateHighQualityLinkPreview: false,
         });
 
         const session = {
@@ -241,6 +245,7 @@ export const initializeClient = async (businessId) => {
 
                 // ✅ Clear Timeout on Success
                 if (connectionTimers[businessId]) {
+                    console.log(`[WhatsApp] Connection successful for ${businessId}, clearing timer.`);
                     clearTimeout(connectionTimers[businessId]);
                     delete connectionTimers[businessId];
                 }
