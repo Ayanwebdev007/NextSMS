@@ -12,7 +12,7 @@ const sessionSchema = new mongoose.Schema(
         // We store the entire JSON dump of the creds/keys here.
         // Baileys 'useMultiFileAuthState' data will be adapted to fit here.
         data: {
-            type: Object,
+            type: mongoose.Schema.Types.Mixed,
             default: {}
         },
         // Master Lock System: Prevents multiple server instances from fighting
