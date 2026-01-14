@@ -140,7 +140,7 @@ app.use((req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 5005;
+const PORT = 5005; // HARDCODED TO BYPASS GHOST PROCESS ON 5000
 const server = app.listen(PORT, () => {
   console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
   console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
