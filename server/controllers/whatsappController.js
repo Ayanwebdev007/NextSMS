@@ -48,9 +48,14 @@ const useMongoDBAuthState = async (businessId) => {
         creds = initAuthCreds();
     }
 
-    // 2. Save Function
-    const saveCreds = async () => {
+    // 2. Save Function (Accepts partial updates)
+    const saveCreds = async (update) => {
         try {
+            // CRITICAL FIX: Update in-memory creds if an update is provided
+            if (update && typeof update === 'object') {
+                Object.assign(creds, update);
+            }
+
             const result = await SessionStore.findOneAndUpdate(
                 { businessId: businessId },
                 {
