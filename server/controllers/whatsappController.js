@@ -200,19 +200,18 @@ const acquireMasterLock = async (businessId) => {
             const [masterHostname] = currentMaster.masterId.split('-');
             const [myHostname] = INSTANCE_ID.split('-');
 
-            if (masterHostname === myHostname && currentMaster.masterId !== INSTANCE_ID) {
-                console.warn(`[LOCK] [${INSTANCE_ID}] HIJACKING stale lock from ghost: ${currentMaster.masterId}`);
-                const hijackResult = await SessionStore.findOneAndUpdate(
+            if (masterHostname === myHostname) {
+                console.warn(`[LOCK] [${INSTANCE_ID}] FORCE TAKEOVER from same-host: ${currentMaster.masterId}`);
+                await SessionStore.findOneAndUpdate(
                     { businessId },
                     {
                         $set: {
                             masterId: INSTANCE_ID,
                             lastHeartbeat: now
                         }
-                    },
-                    { new: true }
+                    }
                 );
-                return hijackResult?.masterId === INSTANCE_ID;
+                return true; // We took it forcefully
             }
         }
 
