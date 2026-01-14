@@ -147,15 +147,20 @@ app.use(express.static(clientBuildPath));
 // The "catch-all" handler: for any request that doesn't
 // match one above, send back React's index.html file.
 // We use a regex /* to be safe with modern Express/path-to-regexp
-app.use((req, res, next) => {
-  if (req.method !== 'GET' || req.url.startsWith('/api')) {
+// Final Catch-all for SPA
+app.get('*', (req, res, next) => {
+  // If it's an API request that reached here, it's a 404
+  if (req.url.startsWith('/api')) {
     return next();
   }
+
   const indexPath = path.join(clientBuildPath, 'index.html');
+  console.log(`[FRONTEND] Serving index.html for: ${req.url}`);
+
   res.sendFile(indexPath, (err) => {
     if (err) {
-      console.error('[SERVER ERROR] index.html missing at:', indexPath);
-      res.status(500).send('Frontend build not found.');
+      console.error('[SERVER ERROR] Failed to send index.html:', err.message);
+      res.status(500).send('Frontend build is missing. Please run "npm run build" in the client folder.');
     }
   });
 });
