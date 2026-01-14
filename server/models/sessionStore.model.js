@@ -15,6 +15,15 @@ const sessionSchema = new mongoose.Schema(
             type: Object,
             default: {}
         },
+        // Master Lock System: Prevents multiple server instances from fighting
+        masterId: {
+            type: String, // Unique ID for the server instance (e.g., hostname-pid)
+            default: null
+        },
+        lastHeartbeat: {
+            type: Date,
+            default: null
+        }
     },
     { timestamps: true }
 );

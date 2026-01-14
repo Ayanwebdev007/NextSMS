@@ -13,6 +13,8 @@ import { BufferJSON } from "@whiskeysockets/baileys"; // Need BufferJSON to seri
 
 export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
+const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
+console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
 
 /* =======================
    AUTH PATH
@@ -142,6 +144,60 @@ const cleanBrokenSession = async (businessId) => {
 };
 
 /* =======================
+   MASTER LOCK SYSTEM
+======================= */
+const acquireMasterLock = async (businessId) => {
+    try {
+        const now = new Date();
+        const timeout = 60000; // 1 minute timeout for stale locks
+
+        // Attempt to take the lock if:
+        // 1. No master exists (null)
+        // 2. We are already the master
+        // 3. The current master hasn't heart-beated in a while (stale)
+        const session = await SessionStore.findOneAndUpdate(
+            {
+                businessId,
+                $or: [
+                    { masterId: null },
+                    { masterId: INSTANCE_ID },
+                    { lastHeartbeat: { $lt: new Date(now - timeout) } }
+                ]
+            },
+            {
+                $set: {
+                    masterId: INSTANCE_ID,
+                    lastHeartbeat: now
+                }
+            },
+            { new: true, upsert: true }
+        );
+
+        const isMaster = session.masterId === INSTANCE_ID;
+        if (!isMaster) {
+            console.warn(`[LOCK] Business ${businessId} is already managed by another instance: ${session.masterId}`);
+        }
+        return isMaster;
+    } catch (err) {
+        console.error(`[LOCK] Failed to acquire lock for ${businessId}:`, err.message);
+        return false;
+    }
+};
+
+// Heartbeat for active sessions
+setInterval(async () => {
+    const activeBusinessIds = Object.keys(clients).filter(id => clients[id].status === "ready");
+    for (const businessId of activeBusinessIds) {
+        try {
+            await SessionStore.updateOne(
+                { businessId, masterId: INSTANCE_ID },
+                { $set: { lastHeartbeat: new Date() } }
+            );
+        } catch (e) { }
+    }
+}, 30000); // 30s heartbeat
+
+/* =======================
    RESTORE SESSIONS
 ======================= */
 export const restoreSessions = async () => {
@@ -172,22 +228,26 @@ export const initializeClient = async (businessId) => {
     console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
 
     // Corrected Guard: If already connecting or active, don't start a second one
-    if (clients[businessId]) {
-        // If it's already "ready", we are done.
-        if (clients[businessId].status === "ready") {
+    const existingSession = clients[businessId];
+    if (existingSession) {
+        if (existingSession.status === "ready") {
             initializing.delete(businessId);
             return;
         }
 
-        // If it's not ready but exists, it might be a "hanging" socket from a previous failed attempt.
-        // Clean it up SAFELY without triggering its own reconnect logic.
         console.log(`[WhatsApp] Cleaning up old socket for ${businessId} before re-init`);
-        if (clients[businessId].sock) {
-            clients[businessId].sock.manualCleanup = true; // Flag to skip reconnect logic in the OLD handler
-            try { clients[businessId].sock.end(); } catch (e) { }
+        if (existingSession.sock) {
+            existingSession.sock.manualCleanup = true;
+            try { existingSession.sock.end(); } catch (e) { }
         }
-        // NOTE: We do NOT delete the entire clients[businessId] yet because we want to preserve 
-        // the reconnectAttempts counter stored in it.
+    }
+
+    // 🔒 MASTER LOCK CHECK
+    const hasLock = await acquireMasterLock(businessId);
+    if (!hasLock) {
+        console.error(`[WhatsApp] Initialization ABORTED for ${businessId} - Managed by another server.`);
+        initializing.delete(businessId);
+        return;
     }
 
     try {
@@ -196,13 +256,17 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
+            browser: Browsers.ubuntu("Chrome") // Consistent fingerprint
         });
+
+        // PRESERVE reconnectAttempts from memory if it exists
+        const prevAttempts = existingSession?.reconnectAttempts || 0;
 
         const session = {
             sock,
             qr: null,
             status: "initializing",
-            reconnectAttempts: 0
+            reconnectAttempts: prevAttempts // <--- FIXED: Restore attempts
         };
         clients[businessId] = session;
         // initializing.delete(businessId); // This was moved to connection.update and catch block

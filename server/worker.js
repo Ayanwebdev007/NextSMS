@@ -14,8 +14,9 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
 
-console.log("[WORKER] Worker module loaded. Awaiting start command...");
+console.log(`[WORKER] Worker module loaded. Instance: ${INSTANCE_ID}`);
 
 let worker = null;
 
@@ -48,18 +49,26 @@ export const startWorker = async () => {
             console.log(`[WORKER] [Job:${job.id}] Active sessions in memory: [${activeSessions.join(", ")}]`);
 
             try {
-                // � Fetch Business Early (Used for session checks and footers)
+                //  Fetch Business Early (Used for session checks and footers)
                 const business = await Business.findById(businessId);
                 if (!business) throw new Error("Business not found");
 
-                // �🛑 Pause Check
                 if (campaignId) {
                     const campaign = await Campaign.findById(campaignId);
                     if (campaign && campaign.status === 'paused') {
-                        console.log(`[WORKER] [Job:${job.id}] Campaign paused. Rescheduling...`);
-                        await job.moveToDelayed(Date.now() + 30000);
-                        return;
+                        console.log(`[WORKER] [Job:${job.id}] Campaign paused. Waiting...`);
+                        throw new Error("RETRY_LATER: Campaign paused");
                     }
+                }
+
+                // 🔒 Lock Check: Only the owner of the session should process its messages
+                const { SessionStore } = await import("./models/sessionStore.model.js");
+                const sessionEntry = await SessionStore.findOne({ businessId });
+                if (sessionEntry && sessionEntry.masterId && sessionEntry.masterId !== INSTANCE_ID) {
+                    console.log(`[WORKER] [Job:${job.id}] Discarding - Business is managed by another instance (${sessionEntry.masterId})`);
+                    // If we are not the master, we shouldn't even attempt to process this.
+                    // Another server's worker will handle it.
+                    return;
                 }
 
                 // 🔍 Session Check (Consumer Only - No Competing Init)
@@ -77,11 +86,8 @@ export const startWorker = async () => {
 
                     if (!clientData || clientData.status !== "ready") {
                         if (business && business.sessionStatus === "connected") {
-                            // If DB says connected but we don't have it, just wait.
-                            // The main server's restoreSessions or reconnection loop will handle this.
                             console.log(`[WORKER] [Job:${job.id}] Session missing in memory but DB says connected. Waiting for server to restore...`);
-                            await job.moveToDelayed(Date.now() + 10000);
-                            return;
+                            throw new Error("RETRY_LATER: Session restoring");
                         }
                         throw new Error(`WhatsApp not connected (Status: ${business?.sessionStatus || 'disconnected'})`);
                     }
@@ -96,11 +102,9 @@ export const startWorker = async () => {
                     return;
                 }
 
-                const sockState = sock.ws?.readyState;
                 if (sockState !== 1) { // 1 = OPEN
                     console.warn(`[WORKER] [Job:${job.id}] WebSocket not open (State: ${sockState}). Waiting...`);
-                    await job.moveToDelayed(Date.now() + 5000);
-                    return;
+                    throw new Error("RETRY_LATER: WebSocket opening");
                 }
 
                 console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). Preparing payload...`);
@@ -248,7 +252,16 @@ export const startWorker = async () => {
                 }
 
             } catch (error) {
-                console.error(`[WORKER] [Job:${job.id}] ERROR:`, error.message);
+                const isTransient = error.message.includes("RETRY_LATER");
+                if (isTransient) {
+                    console.warn(`[WORKER] [Job:${job.id}] Transient delay: ${error.message}`);
+                    // Custom delay for specific transient errors
+                    const delay = error.message.includes("Campaign") ? 60000 : 10000;
+                    await job.moveToDelayed(Date.now() + delay);
+                    return; // Fail without moving to "failed" state or updating DB
+                }
+
+                console.error(`[WORKER] [Job:${job.id}] PERMANENT ERROR:`, error.message);
 
                 if (campaignId) {
                     await Campaign.findByIdAndUpdate(campaignId, { $inc: { failedCount: 1 } });
@@ -269,7 +282,6 @@ export const startWorker = async () => {
                         errorMessage: error.message,
                     });
                 }
-
                 throw error;
             }
 
