@@ -87,47 +87,29 @@ const useMongoDBAuthState = async (businessId) => {
                 },
                 set: async (data) => {
                     try {
-                        // 🟢 ATOMIC STABILITY FIX (Read-Modify-Write)
-                        // Instead of blind $set (which fails on deep merges), we fetch the full doc,
-                        // apply changes in memory, and save it back. This ensures consistency.
+                        const updates = {};
+                        const deletions = {};
 
-                        const session = await SessionStore.findOne({ businessId });
-
-                        if (!session) {
-                            // This should rarely happen if creds are saved first, but we handle it.
-                            // However, we can't easily create a session here without creds.
-                            // We depend on saveCreds being called at least once.
-                            console.warn(`[AUTH] Checking session existence for keys... Session missing for ${businessId}`);
-                            return;
-                        }
-
-                        if (!session.data) session.data = {};
-
-                        let mutationCount = 0;
                         for (const type in data) {
-                            // Ensure the category exists (e.g., 'sender-key', 'session')
-                            if (!session.data[type]) session.data[type] = {};
-
                             for (const id in data[type]) {
                                 const val = data[type][id];
+                                const keyPath = `data.${type}.${id}`; // atomic path
                                 if (val) {
-                                    // Store with BufferJSON handling
-                                    session.data[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                    updates[keyPath] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
                                 } else {
-                                    // Delete if null/undefined
-                                    delete session.data[type][id];
+                                    deletions[keyPath] = 1; // Mark for $unset
                                 }
-                                mutationCount++;
                             }
                         }
 
-                        if (mutationCount > 0) {
-                            // ⚠️ CRITICAL: Mongoose Mixed types require explicit marking
-                            session.markModified('data');
-                            await session.save();
-                            console.log(`[AUTH] Atomic keys updated for ${businessId} (${mutationCount} keys)`);
-                        }
+                        const operations = {};
+                        if (Object.keys(updates).length > 0) operations.$set = updates;
+                        if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
+                        if (Object.keys(operations).length > 0) {
+                            await SessionStore.updateOne({ businessId }, operations, { upsert: true });
+                            console.log(`[AUTH] Atomic keys updated for ${businessId} (${Object.keys(updates).length} set, ${Object.keys(deletions).length} del)`);
+                        }
                     } catch (err) {
                         console.error(`[AUTH] Failed to save keys for ${businessId}:`, err.message);
                         throw err;

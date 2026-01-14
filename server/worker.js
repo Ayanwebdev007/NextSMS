@@ -85,18 +85,44 @@ export const startWorker = async () => {
                 if (!clientData || clientData.status !== "ready") {
                     console.log(`[WORKER] [Job:${job.id}] Session not ready (Status: ${clientData?.status || 'missing'}). Waiting...`);
 
-                    // Wait up to 10 seconds for session to become ready (managed by restoreSessions)
-                    for (let i = 0; i < 10; i++) {
+                    // PATIENT WAIT: Wait up to 30 seconds for session to stabilize/reconnect
+                    for (let i = 0; i < 30; i++) {
                         await new Promise(r => setTimeout(r, 1000));
                         clientData = clients[businessId];
                         if (clientData?.status === "ready") break;
                     }
 
                     if (!clientData || clientData.status !== "ready") {
-                        if (business && business.sessionStatus === "connected") {
-                            console.log(`[WORKER] [Job:${job.id}] Session missing in memory but DB says connected. Waiting for server to restore...`);
-                            throw new Error("RETRY_LATER: Session restoring");
+                        // 1. If session exists in memory (even if disconnected), it means we are retrying.
+                        // DO NOT FAIL PERMANENTLY. Just wait.
+                        if (clientData) {
+                            console.log(`[WORKER] [Job:${job.id}] Session exists but isn't ready (${clientData.status}). Retrying later.`);
+                            throw new Error("RETRY_LATER: Session reconnecting");
                         }
+
+                        // 2. If session completely missing, but DB says connected (e.g. restart happened)
+                        if (business && business.sessionStatus === "connected") {
+                            console.log(`[WORKER] [Job:${job.id}] Session missing in memory. 🛠️  Attempting SELF-HEALING restore for ${businessId}...`);
+
+                            // Active Self-Healing
+                            try {
+                                await initializeClient(businessId);
+                                // Wait 5s for it to connect
+                                await new Promise(r => setTimeout(r, 5000));
+                                clientData = clients[businessId];
+
+                                if (clientData?.status === "ready") {
+                                    console.log(`[WORKER] [Job:${job.id}] ✅ Self-healing successful! Resuming...`);
+                                } else {
+                                    throw new Error("RETRY_LATER: Healing in progress");
+                                }
+                            } catch (e) {
+                                console.error(`[WORKER] Healing failed: ${e.message}`);
+                                throw new Error("RETRY_LATER: Healing failed");
+                            }
+                        }
+
+                        // 3. Only fail if DB explicitly says disconnected AND we have no session in memory
                         throw new Error(`WhatsApp not connected (Status: ${business?.sessionStatus || 'disconnected'})`);
                     }
                 }
