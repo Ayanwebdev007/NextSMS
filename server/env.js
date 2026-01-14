@@ -42,7 +42,7 @@ try {
     console.error('[ENV] Manual Parse Error:', err.message);
 }
 
-const CRITICAL_KEYS = ['GOOGLE_CLIENT_ID', 'RAZORPAY_KEY_ID', 'JWT_SECRET', 'MONGODB_URI'];
+const CRITICAL_KEYS = ['GOOGLE_CLIENT_ID', 'RAZORPAY_KEY_ID', 'JWT_SECRET', 'MONGO_URI'];
 CRITICAL_KEYS.forEach(key => {
     if (!process.env[key]) console.error(`[ENV] MISSING CRITICAL KEY: ${key}`);
 });
