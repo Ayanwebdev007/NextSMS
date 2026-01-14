@@ -124,13 +124,18 @@ app.use('/uploads', express.static('uploads'));
 app.use(express.static(clientBuildPath));
 
 // --- 4. THE ULTIMATE CATCH-ALL (SPA Support) --- //
-// This MUST be the last route. It catches everything and sends it to React.
-app.get('*', (req, res) => {
+// This MUST be the last route. We use app.use to avoid PathError crash.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || req.url.startsWith('/api')) {
+    return next();
+  }
+
   const indexPath = path.join(clientBuildPath, 'index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
-      console.error('[CRITICAL] Frontend index.html missing at:', indexPath);
-      res.status(500).send('Frontend build not found. Please run "npm run build" in the client folder.');
+      if (!res.headersSent) {
+        res.status(404).json({ error: 'Not Found', path: req.url });
+      }
     }
   });
 });
