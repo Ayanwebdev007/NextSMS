@@ -66,9 +66,16 @@ export const startWorker = async () => {
                 const { SessionStore } = await import("./models/sessionStore.model.js");
                 const sessionEntry = await SessionStore.findOne({ businessId });
                 if (sessionEntry && sessionEntry.masterId && sessionEntry.masterId !== INSTANCE_ID) {
-                    console.log(`[WORKER] [Job:${job.id}] Managed by another instance (${sessionEntry.masterId}). Rescheduling...`);
-                    await job.moveToDelayed(Date.now() + 5000);
-                    return;
+                    console.log(`[WORKER] [Job:${job.id}] Delaying - Managed by instance (${sessionEntry.masterId})`);
+                    throw new Error(`RETRY_LATER: Managed by instance ${sessionEntry.masterId}`);
+                }
+
+                // 🕵️ EXTRA SAFETY: Double check heartbeats
+                const now = new Date();
+                const timeout = 30000;
+                if (sessionEntry && sessionEntry.lastHeartbeat && (now - sessionEntry.lastHeartbeat) > timeout) {
+                    console.log(`[WORKER] [Job:${job.id}] Master ${sessionEntry.masterId} is STALE. Waiting for handover...`);
+                    throw new Error("RETRY_LATER: Master stale");
                 }
 
                 // 🔍 Session Check (Consumer Only - No Competing Init)

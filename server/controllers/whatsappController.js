@@ -149,7 +149,7 @@ const cleanBrokenSession = async (businessId) => {
 const acquireMasterLock = async (businessId) => {
     try {
         const now = new Date();
-        const timeout = 60000; // 1 minute timeout for stale locks
+        const timeout = 30000; // 30 seconds takeover for stale locks
 
         // 1. First, check if the session entry exists
         let session = await SessionStore.findOne({ businessId });
