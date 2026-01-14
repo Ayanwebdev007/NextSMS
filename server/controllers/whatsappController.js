@@ -89,27 +89,26 @@ const useMongoDBAuthState = async (businessId) => {
                 },
                 set: async (data) => {
                     try {
-                        const session = await SessionStore.findOne({ businessId });
-                        const currentData = session?.data || {};
-
+                        const updateOps = {};
                         for (const type in data) {
-                            if (!currentData[type]) currentData[type] = {};
                             for (const id in data[type]) {
                                 const val = data[type][id];
                                 if (val) {
-                                    currentData[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                    updateOps[`data.${type}.${id}`] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
                                 } else {
-                                    delete currentData[type][id];
+                                    updateOps[`data.${type}.${id}`] = null; // Mark for deletion/nulling
                                 }
                             }
                         }
 
-                        await SessionStore.findOneAndUpdate(
-                            { businessId },
-                            { $set: { data: currentData } },
-                            { upsert: true }
-                        );
-                        console.log(`[AUTH] Keys updated in DB for ${businessId}`);
+                        if (Object.keys(updateOps).length > 0) {
+                            await SessionStore.findOneAndUpdate(
+                                { businessId },
+                                { $set: updateOps },
+                                { upsert: true }
+                            );
+                            console.log(`[AUTH] Atomic keys updated in DB for ${businessId}`);
+                        }
                     } catch (err) {
                         console.error(`[AUTH] Failed to save keys for ${businessId}:`, err.message);
                         throw err;
@@ -209,10 +208,6 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: "silent" }),
-            browser: Browsers.ubuntu("Chrome"),
-            syncFullHistory: false,
-            linkPreview: false,
-            generateHighQualityLinkPreview: false,
         });
 
         const session = {
@@ -245,7 +240,6 @@ export const initializeClient = async (businessId) => {
 
                 // ✅ Clear Timeout on Success
                 if (connectionTimers[businessId]) {
-                    console.log(`[WhatsApp] Connection successful for ${businessId}, clearing timer.`);
                     clearTimeout(connectionTimers[businessId]);
                     delete connectionTimers[businessId];
                 }
@@ -277,14 +271,24 @@ export const initializeClient = async (businessId) => {
                 if (shouldReconnect) {
                     // ZERO-DELETION: We no longer wipe the session after N attempts.
                     // We just keep retrying with exponential backoff.
-                    const delay = Math.min(Math.pow(2, Math.min(session.reconnectAttempts, 6)) * 1000, 30000);
-                    session.reconnectAttempts++;
-                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${session.reconnectAttempts})`);
+                    const currentAttempts = clients[businessId]?.reconnectAttempts || 0;
+                    const nextAttempts = currentAttempts + 1;
 
-                    // Cleanup memory but NOT folder
-                    delete clients[businessId];
+                    // Special handling for 440: Longer backoff to let the other instance clear
+                    const isConflict = statusCode === 440;
+                    const baseDelay = isConflict ? 5000 : 1000;
+                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
+
+                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts})`);
+
+                    // PRESERVE memory session but mark as disconnected
+                    if (clients[businessId]) {
+                        clients[businessId].status = "disconnected";
+                        clients[businessId].reconnectAttempts = nextAttempts;
+                        // Keep the sock object but it's dead
+                    }
+
                     initializing.delete(businessId);
-
                     setTimeout(() => initializeClient(businessId), delay);
                 } else {
                     console.error(`[WhatsApp] Permanent logout for ${businessId}. Data preserved per Zero-Deletion policy.`);

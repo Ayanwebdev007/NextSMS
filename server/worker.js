@@ -89,15 +89,21 @@ export const startWorker = async () => {
 
                 const sock = clientData.sock;
 
-                // 🔍 Robust Connection Check
-                if (!sock || !sock.ws || sock.ws.readyState !== 1) { // 1 = OPEN
-                    console.log(`[WORKER] [Job:${job.id}] Socket not ready (State: ${sock?.ws?.readyState}). Triggering re-init and rescheduling...`);
-                    initializeClient(businessId);
+                // 🕵️ EXTRA STABILITY CHECK: Ensure sock.user exists (Proof of authentication)
+                if (!sock.user) {
+                    console.warn(`[WORKER] [Job:${job.id}] Socket status is ready but sock.user is missing. Connection unstable. Waiting...`);
                     await job.moveToDelayed(Date.now() + 5000);
                     return;
                 }
 
-                console.log(`[WORKER] [Job:${job.id}] Session verified. Preparing payload...`);
+                const sockState = sock.ws?.readyState;
+                if (sockState !== 1) { // 1 = OPEN
+                    console.warn(`[WORKER] [Job:${job.id}] WebSocket not open (State: ${sockState}). Waiting...`);
+                    await job.moveToDelayed(Date.now() + 5000);
+                    return;
+                }
+
+                console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). Preparing payload...`);
 
                 // 🔗 Variable Replacement Logic
                 let processedText = text;
@@ -167,41 +173,51 @@ export const startWorker = async () => {
                 try {
                     await sock.sendMessage(jid, messagePayload);
                 } catch (sendError) {
-                    if (buttons.length > 0) {
-                        console.warn(`[WORKER] [Job:${job.id}] Button delivery failed (${sendError.message}). Falling back to standard message...`);
+                    // RETRY once if it looks like a transient network error
+                    console.error(`[WORKER] [Job:${job.id}] Send Error: ${sendError.message}. Attempting recovery retry...`);
 
-                        // Strip buttons and try one more time
-                        const fallbackPayload = { ...messagePayload };
-                        delete fallbackPayload.buttons;
-                        delete fallbackPayload.footer;
-                        delete fallbackPayload.headerType;
+                    // Pause for 2s before retry
+                    await new Promise(r => setTimeout(r, 2000));
 
-                        await sock.sendMessage(jid, fallbackPayload);
+                    try {
+                        await sock.sendMessage(jid, messagePayload);
+                    } catch (retryError) {
+                        if (buttons.length > 0) {
+                            console.warn(`[WORKER] [Job:${job.id}] Button delivery failed (${retryError.message}). Falling back to standard message...`);
 
-                        // Mark history as sent with fallback
-                        if (messageId) {
-                            await Message.findByIdAndUpdate(messageId, {
-                                status: "sent",
-                                errorMessage: "Buttons rejected by server; delivered as text fallback.",
-                                content: processedText,
-                                sentAt: new Date(),
-                            });
+                            // Strip buttons and try one more time
+                            const fallbackPayload = { ...messagePayload };
+                            delete fallbackPayload.buttons;
+                            delete fallbackPayload.footer;
+                            delete fallbackPayload.headerType;
+
+                            await sock.sendMessage(jid, fallbackPayload);
+
+                            // Mark history as sent with fallback
+                            if (messageId) {
+                                await Message.findByIdAndUpdate(messageId, {
+                                    status: "sent",
+                                    errorMessage: "Buttons rejected by server; delivered as text fallback.",
+                                    content: processedText,
+                                    sentAt: new Date(),
+                                });
+                            } else {
+                                await Message.create({
+                                    businessId,
+                                    campaignId: campaignId || null,
+                                    recipient,
+                                    content: processedText,
+                                    status: "sent",
+                                    errorMessage: "Buttons rejected by server; delivered as text fallback.",
+                                    sentAt: new Date(),
+                                });
+                            }
+
+                            // Proceed to end of loop (don't create duplicate record)
+                            return;
                         } else {
-                            await Message.create({
-                                businessId,
-                                campaignId: campaignId || null,
-                                recipient,
-                                content: processedText,
-                                status: "sent",
-                                errorMessage: "Buttons rejected by server; delivered as text fallback.",
-                                sentAt: new Date(),
-                            });
+                            throw retryError;
                         }
-
-                        // Proceed to end of loop (don't create duplicate record)
-                        return;
-                    } else {
-                        throw sendError;
                     }
                 }
 
