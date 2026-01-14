@@ -18,7 +18,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             # Navigate to project directory (Adjust path if needed)
-            cd ~/nextsms-app/NextSMS
+            cd /var/www/nextsms
 
             # Pull latest code
             git pull origin main
