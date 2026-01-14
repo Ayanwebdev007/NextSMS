@@ -282,7 +282,7 @@ const ConnectionCard = () => {
                     <button
                         onClick={handleConnect}
                         disabled={isActionLoading || status === "initializing"}
-                        className="flex-1 text-center font-bold text-white bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
+                        className="flex-1 text-center font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
                     >
                         Connect
                     </button>
