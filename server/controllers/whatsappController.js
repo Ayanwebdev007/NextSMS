@@ -48,13 +48,22 @@ const useMongoDBAuthState = async (businessId) => {
         creds = initAuthCreds();
     }
 
-    // CRITICAL: In-memory cache for session keys to prevent DB read delays
-    const keyCache = {};
+    // CRITICAL: LRU cache for session keys to prevent memory leaks
+    const { LRUCache } = await import('lru-cache');
+    const keyCache = new LRUCache({
+        max: 1000,  // Max 1000 key entries (prevents unlimited growth)
+        ttl: 1000 * 60 * 60 * 24,  // 24 hour TTL
+        updateAgeOnGet: true  // Refresh on access
+    });
+
+    // Pre-load existing keys into LRU cache
     if (existingSession?.data) {
-        // Pre-load all existing keys into memory
         for (const type in existingSession.data) {
             if (type !== 'creds') {
-                keyCache[type] = existingSession.data[type];
+                for (const id in existingSession.data[type]) {
+                    const cacheKey = `${type}:${id}`;
+                    keyCache.set(cacheKey, existingSession.data[type][id]);
+                }
             }
         }
     }
@@ -90,13 +99,12 @@ const useMongoDBAuthState = async (businessId) => {
             keys: {
                 get: async (type, ids) => {
                     const data = {};
-                    // CRITICAL FIX: Read from in-memory cache first
-                    if (keyCache[type]) {
-                        for (const id of ids) {
-                            const val = keyCache[type][id];
-                            if (val) {
-                                data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
-                            }
+                    // Read from LRU cache
+                    for (const id of ids) {
+                        const cacheKey = `${type}:${id}`;
+                        const val = keyCache.get(cacheKey);
+                        if (val) {
+                            data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
                         }
                     }
                     return data;
@@ -107,19 +115,19 @@ const useMongoDBAuthState = async (businessId) => {
                         const deletions = {};
 
                         for (const type in data) {
-                            // Update in-memory cache immediately
-                            if (!keyCache[type]) keyCache[type] = {};
-
                             for (const id in data[type]) {
                                 const val = data[type][id];
                                 const keyPath = `data.${type}.${id}`;
+                                const cacheKey = `${type}:${id}`;
+
                                 if (val) {
-                                    // Save to cache and prepare DB update
-                                    keyCache[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
-                                    updates[keyPath] = keyCache[type][id];
+                                    // Save to LRU cache and prepare DB update
+                                    const serialized = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                    keyCache.set(cacheKey, serialized);
+                                    updates[keyPath] = serialized;
                                 } else {
                                     // Delete from cache and mark for DB deletion
-                                    delete keyCache[type][id];
+                                    keyCache.delete(cacheKey);
                                     deletions[keyPath] = 1;
                                 }
                             }

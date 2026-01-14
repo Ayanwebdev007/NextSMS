@@ -24,6 +24,7 @@
     "google-auth-library": "^10.3.0",
     "ioredis": "^5.7.0",
     "jsonwebtoken": "^9.0.2",
+    "lru-cache": "^10.1.0",
     "mongoose": "^8.18.0",
     "multer": "^2.0.2",
     "nodemon": "^3.1.10",
