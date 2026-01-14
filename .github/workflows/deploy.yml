@@ -24,14 +24,21 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Install dependencies
-            echo "Installing dependencies..."
-            cd client && npm install && npm run build
-            cd ../server && npm install
+            # Install dependencies and Build Frontend
+            echo "Building Frontend (this may take a minute)..."
+            cd client
+            npm install --no-audit --no-fund
+            npm run build
+            
+            # Install Server dependencies
+            echo "Updating Server..."
+            cd ../server
+            npm install --no-audit --no-fund
             
             # Restart Application cleanly
             echo "Restarting application..."
             cd ..
-            pm2 delete nextsms-server || true
-            pm2 start ecosystem.config.js --env production
+            pm2 restart nextsms-server --update-env || pm2 start ecosystem.config.js --env production
             pm2 save
+            
+            echo "✅ DEPLOYMENT COMPLETE!"
