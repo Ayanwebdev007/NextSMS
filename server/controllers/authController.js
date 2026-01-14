@@ -5,8 +5,8 @@ import asyncHandler from 'express-async-handler';
 import { Business } from '../models/business.model.js';
 import { OAuth2Client } from 'google-auth-library';
 
-// This needs to be initialized to be used in the Google login function
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+// Google client will be initialized inside the handler to ensure env vars are ready
+let googleClient;
 
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -88,6 +88,12 @@ export const handleGoogleLogin = asyncHandler(async (req, res) => {
 
     try {
         console.log('[AUTH] Starting Google token verification...');
+
+        if (!googleClient) {
+            console.log('[AUTH] Initializing Google OAuth2Client with ID:', process.env.GOOGLE_CLIENT_ID?.substring(0, 10) + '...');
+            googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+        }
+
         const ticket = await googleClient.verifyIdToken({
             idToken: credential,
             audience: process.env.GOOGLE_CLIENT_ID,
