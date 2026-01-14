@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.11');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.12');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
@@ -63,7 +63,7 @@ app.get('/api/debug/status', (req, res) => {
 
   res.json({
     instance: `${os.hostname()}-${process.pid}`,
-    version: '1.1.11',
+    version: '1.1.12',
     activeClients,
     redis: process.env.REDIS_URL ? 'URL SET' : `${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
   });
@@ -161,6 +161,12 @@ const PORT = 5000; // REALIGNED TO NGINX DEFAULT
 const server = app.listen(PORT, () => {
   console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
   console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n[CRITICAL] PORT ${PORT} IS BLOCKED BY A GHOST PROCESS.`);
+    console.error(`[CRITICAL] Run: fuser -k ${PORT}/tcp to kill it.\n`);
+    process.exit(1);
+  }
 });
 
 // --- Global Error Handler --- //

@@ -194,8 +194,28 @@ const acquireMasterLock = async (businessId) => {
             return true;
         }
 
-        // acquisition failed, find out who owns it
+        // 4. HIJACK LOGIC: If ownership is from the same host, take it forcefully
         const currentMaster = await SessionStore.findOne({ businessId });
+        if (currentMaster?.masterId) {
+            const [masterHostname] = currentMaster.masterId.split('-');
+            const [myHostname] = INSTANCE_ID.split('-');
+
+            if (masterHostname === myHostname && currentMaster.masterId !== INSTANCE_ID) {
+                console.warn(`[LOCK] [${INSTANCE_ID}] HIJACKING stale lock from ghost: ${currentMaster.masterId}`);
+                const hijackResult = await SessionStore.findOneAndUpdate(
+                    { businessId },
+                    {
+                        $set: {
+                            masterId: INSTANCE_ID,
+                            lastHeartbeat: now
+                        }
+                    },
+                    { new: true }
+                );
+                return hijackResult?.masterId === INSTANCE_ID;
+            }
+        }
+
         console.warn(`[LOCK] [${INSTANCE_ID}] Rejected - Controlled by: ${currentMaster?.masterId || 'unknown'}`);
         return false;
     } catch (err) {
