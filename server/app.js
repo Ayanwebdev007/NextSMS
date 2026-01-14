@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.17');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.18');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
@@ -7,6 +7,7 @@ import express from 'express';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,7 +64,7 @@ app.get('/api/debug/status', (req, res) => {
 
   res.json({
     instance: `${os.hostname()}-${process.pid}`,
-    version: '1.1.17',
+    version: '1.1.18',
     activeClients,
     redis: process.env.REDIS_URL ? 'URL SET' : `${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
   });
@@ -163,9 +164,16 @@ const server = app.listen(PORT, () => {
   console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n[CRITICAL] PORT ${PORT} IS BLOCKED BY A GHOST PROCESS.`);
-    console.error(`[CRITICAL] Run: fuser -k ${PORT}/tcp to kill it.\n`);
-    process.exit(1);
+    console.error(`\n[CRITICAL] PORT ${PORT} IS BLOCKED. ATTEMPTING SELF-HEALING...`);
+    exec(`fuser -k ${PORT}/tcp`, (error, stdout, stderr) => {
+      if (error) console.error(`[AUTO-FIX] Kill failed: ${error.message}`);
+      else console.log(`[AUTO-FIX] Ghost process killed. Restarting...`);
+
+      // Wait 1s and exit to let PM2 restart us (now with free port)
+      setTimeout(() => process.exit(1), 1000);
+    });
+  } else {
+    throw err;
   }
 });
 
