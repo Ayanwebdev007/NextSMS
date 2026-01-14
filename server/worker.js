@@ -1,4 +1,5 @@
 import "./env.js";
+import os from "os";
 
 import bullmq from "bullmq";
 const { Worker } = bullmq;

@@ -245,10 +245,14 @@ export const initializeClient = async (businessId) => {
     // 🔒 MASTER LOCK CHECK
     const hasLock = await acquireMasterLock(businessId);
     if (!hasLock) {
-        console.error(`[WhatsApp] Initialization ABORTED for ${businessId} - Managed by another server.`);
+        console.error(`[LOCK] [${INSTANCE_ID}] Aborted init for ${businessId} - Managed by another server.`);
         initializing.delete(businessId);
         return;
     }
+
+    // Fetch persistent state
+    const sessionEntry = await SessionStore.findOne({ businessId });
+    const dbAttempts = sessionEntry?.reconnectAttempts || 0;
 
     try {
         const { state, saveCreds } = await useMongoDBAuthState(businessId);
@@ -259,14 +263,14 @@ export const initializeClient = async (businessId) => {
             browser: Browsers.ubuntu("Chrome") // Consistent fingerprint
         });
 
-        // PRESERVE reconnectAttempts from memory if it exists
-        const prevAttempts = existingSession?.reconnectAttempts || 0;
+        // PRESERVE reconnectAttempts from memory or DB
+        const prevAttempts = existingSession?.reconnectAttempts || dbAttempts;
 
         const session = {
             sock,
             qr: null,
             status: "initializing",
-            reconnectAttempts: prevAttempts // <--- FIXED: Restore attempts
+            reconnectAttempts: prevAttempts
         };
         clients[businessId] = session;
         // initializing.delete(businessId); // This was moved to connection.update and catch block
@@ -320,13 +324,16 @@ export const initializeClient = async (businessId) => {
                     const sessionState = clients[businessId] || { reconnectAttempts: 0 };
                     const nextAttempts = (sessionState.reconnectAttempts || 0) + 1;
 
+                    // Persist attempts to DB so restart doesn't reset backoff
+                    await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: nextAttempts } });
+
                     // 440 Conflict Recovery logic
                     const isConflict = statusCode === 440;
                     if (isConflict) {
-                        console.warn(`[WhatsApp] 440 Conflict detected for ${businessId}. Resetting stream...`);
+                        console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Attempting stream reset...`);
                         try {
                             await SessionStore.findOneAndUpdate({ businessId }, { $set: { "data.keys": {} } });
-                            console.log(`[WhatsApp] Stream keys cleared for ${businessId}.`);
+                            console.log(`[WhatsApp] [${INSTANCE_ID}] Stream keys cleared.`);
                         } catch (err) { }
                     }
 

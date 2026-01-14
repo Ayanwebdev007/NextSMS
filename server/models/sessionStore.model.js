@@ -23,6 +23,10 @@ const sessionSchema = new mongoose.Schema(
         lastHeartbeat: {
             type: Date,
             default: null
+        },
+        reconnectAttempts: {
+            type: Number,
+            default: 0
         }
     },
     { timestamps: true }
