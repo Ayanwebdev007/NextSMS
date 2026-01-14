@@ -1,10 +1,11 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.10');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.11');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
 import express from 'express';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -62,7 +63,7 @@ app.get('/api/debug/status', (req, res) => {
 
   res.json({
     instance: `${os.hostname()}-${process.pid}`,
-    version: '1.1.9',
+    version: '1.1.11',
     activeClients,
     redis: process.env.REDIS_URL ? 'URL SET' : `${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`
   });
