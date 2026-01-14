@@ -1,16 +1,12 @@
 // NextSMS - Multi-tenant WhatsApp Solution
-// Deploy Version: 1.0.2 - Final Verification
+// Deploy Version: 1.0.3 - Environment Loader Fix
+import './env.js';
 import express from 'express';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Explicitly point to the .env file in the server directory
-const envPath = path.join(__dirname, '.env');
-dotenv.config({ path: envPath });
 import cors from 'cors';
 
 import connectDB from './db/db.js';

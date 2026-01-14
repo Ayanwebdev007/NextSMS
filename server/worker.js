@@ -1,5 +1,4 @@
-import dotenv from "dotenv";
-dotenv.config();
+import "./env.js";
 
 import bullmq from "bullmq";
 const { Worker } = bullmq;

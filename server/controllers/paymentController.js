@@ -1,6 +1,5 @@
 import asyncHandler from "express-async-handler";
-import dotenv from 'dotenv';
-dotenv.config();
+import "../env.js";
 import { Plan } from "../models/plan.model.js";
 import { Business } from "../models/business.model.js";
 import crypto from "crypto";
