@@ -33,18 +33,22 @@ connectDB().then(async () => {
 });
 const app = express();
 
-// --- Health Check for UptimeRobot --- //
-app.get('/ping', (req, res) => {
-  console.log('[MONITOR] Server pinged at', new Date().toISOString());
-  res.send('pong');
+// --- SUPER LOGGER (Hits everything first) --- //
+app.use((req, res, next) => {
+  console.log(`[REVERSE-PROXY] ${req.method} ${req.url}`);
+  next();
 });
+
+// --- Diagnostic Routes (Top Level) --- //
+app.get('/ping', (req, res) => res.send('pong'));
+app.get('/api/test', (req, res) => res.json({
+  message: 'API is reachable',
+  url: req.url,
+  env: process.env.NODE_ENV
+}));
+
 app.get('/api/health', (req, res) => {
-  console.log('[HEALTH] Health check at', new Date().toISOString());
-  res.json({
-    status: 'healthy',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'healthy', uptime: process.uptime() });
 });
 // Dummy root removed to allow React app to load via static middleware
 
@@ -144,7 +148,7 @@ if (fs.existsSync(indexPath)) {
 
 app.use(express.static(clientBuildPath));
 
-app.get('/api/test', (req, res) => res.json({ message: 'API is reachable' }));
+// Diagnostic route moved to top
 
 // Final Catch-all for SPA (Middleware style to avoid regex errors)
 app.use((req, res, next) => {
