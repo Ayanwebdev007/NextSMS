@@ -44,14 +44,18 @@ const ApiPage = () => {
     if (type === 'url') setCopiedUrl(true);
     toast.success("Copied to clipboard!");
     setTimeout(() => {
-        if (type === 'key') setCopiedKey(false);
-        if (type === 'url') setCopiedUrl(false);
+      if (type === 'key') setCopiedKey(false);
+      if (type === 'url') setCopiedUrl(false);
     }, 2000);
   };
 
   // --- THIS IS THE FIX ---
-  // The exampleUrl constant is now back in the component.
-  const exampleUrl = `${import.meta.env.VITE_API_BASE_URL || 'https://nextsms-backend.onrender.com/api'}/whatsapp/send?receiver=91...&msgtext=Hello&mediaUrl=https://...&token=${apiKey || "YOUR_API_KEY"}`;
+  // Derive the API URL dynamically to avoid hardcoded Render URLs
+  const currentOrigin = window.location.origin;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || `${currentOrigin}/api`;
+  const userPhone = user?.phone || "919876543210";
+
+  const exampleUrl = `${apiBase}/whatsapp/send?receiver=${userPhone}&msgtext=Hello&mediaUrl=https://...&token=${apiKey || "YOUR_API_KEY"}`;
 
   if (isLoading) {
     return (
@@ -97,7 +101,7 @@ const ApiPage = () => {
                   )}
                 </button>
               </div>
-              
+
               {/* The Example URL display is now back in the UI */}
               <p className="text-sm text-neutral-400 mt-6">Example API URL:</p>
               <div className="mt-2 flex items-center gap-2 bg-neutral-900 border border-neutral-700 rounded-md p-3">
@@ -150,7 +154,7 @@ const ApiPage = () => {
 
       {renderContent()}
 
-      {user && user.credits > 100 && <ApiDocs apiKey={apiKey} />}
+      {user && user.credits > 100 && <ApiDocs apiKey={apiKey} userPhone={user?.phone} />}
     </div>
   );
 };
