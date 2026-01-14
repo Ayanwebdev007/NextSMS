@@ -1,5 +1,7 @@
-// NextSMS - Multi-tenant WhatsApp Solution
-// Deploy Version: 1.0.3 - Environment Loader Fix
+console.log('\n\n' + '='.repeat(50));
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.0.4');
+console.log('='.repeat(50) + '\n\n');
+
 import './env.js';
 import express from 'express';
 import path from 'path';
@@ -55,6 +57,12 @@ const corsOptions = {
   credentials: true,
 };
 app.use(cors(corsOptions));
+
+// Fix for Google OAuth COOP issue
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  next();
+});
 
 
 
