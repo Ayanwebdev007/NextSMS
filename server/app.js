@@ -46,7 +46,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-app.get('/', (req, res) => res.send('NextSMS Server is Online 🚀'));
+// Dummy root removed to allow React app to load via static middleware
+
 const corsOptions = {
   origin: [
     process.env.FRONTEND_URL,
@@ -135,8 +136,14 @@ app.use(express.static(clientBuildPath));
 
 // The "catch-all" handler: for any request that doesn't
 // match one above, send back React's index.html file.
-app.get(/(.*)/, (req, res) => {
-  res.sendFile(path.join(clientBuildPath, 'index.html'));
+app.get('*', (req, res) => {
+  const indexPath = path.join(clientBuildPath, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[SERVER ERROR] Failed to send index.html:', err.message);
+      res.status(500).send('Frontend build is missing or inaccessible. Run npm run build in client folder.');
+    }
+  });
 });
 
 const PORT = process.env.PORT || 5000;
