@@ -64,6 +64,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url}`);
+  next();
+});
+
 
 
 // Note: express.json() should NOT be used for webhook route, so webhook route is defined before paymentRoutes below.

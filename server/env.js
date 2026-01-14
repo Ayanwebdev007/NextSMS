@@ -14,22 +14,15 @@ console.log('[ENV] Target Path:', envPath);
 // 1. Try standard dotenv
 const result = dotenv.config({ path: envPath, override: true });
 
-if (result.error) {
-    console.error('[ENV] Dotenv Standard Error:', result.error.message);
-}
-
 // 2. Manual Parsing Fallback (Foolproof)
 try {
     if (fs.existsSync(envPath)) {
         const content = fs.readFileSync(envPath, 'utf8');
-        console.log('[ENV] File exists. Size:', content.length, 'bytes.');
-
         const lines = content.split(/\r?\n/);
         let count = 0;
 
         lines.forEach(line => {
             const trimmed = line.trim();
-            // Ignore comments and empty lines
             if (!trimmed || trimmed.startsWith('#')) return;
 
             const [key, ...valueParts] = trimmed.split('=');
@@ -37,21 +30,21 @@ try {
                 const value = valueParts.join('=').trim().replace(/^['"]|['"]$/g, '');
                 process.env[key.trim()] = value;
                 count++;
+
+                // Sensitive masking for logs
+                const mask = value.length > 8 ? value.substring(0, 4) + '...' + value.substring(value.length - 4) : '****';
+                console.log(`[ENV] Loaded Key: ${key.trim()} = ${mask}`);
             }
         });
-        console.log(`[ENV] Manually injected ${count} variables.`);
-    } else {
-        console.error('[ENV] CRITICAL: .env file does not exist at', envPath);
+        console.log(`[ENV] Total ${count} variables injected manually.`);
     }
 } catch (err) {
     console.error('[ENV] Manual Parse Error:', err.message);
 }
 
-// 3. Final Verification
-if (process.env.RAZORPAY_KEY_ID) {
-    console.log('[ENV] SUCCESS: RAZORPAY_KEY_ID is now loaded.');
-} else {
-    console.error('[ENV] FAILURE: RAZORPAY_KEY_ID is still missing!');
-}
+const CRITICAL_KEYS = ['GOOGLE_CLIENT_ID', 'RAZORPAY_KEY_ID', 'JWT_SECRET', 'MONGODB_URI'];
+CRITICAL_KEYS.forEach(key => {
+    if (!process.env[key]) console.error(`[ENV] MISSING CRITICAL KEY: ${key}`);
+});
 
 export default process.env;

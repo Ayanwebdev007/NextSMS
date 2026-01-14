@@ -13,7 +13,7 @@ const GoogleLoginButton = () => {
         const toastId = toast.loading("Verifying with Google...");
         try {
             // Send the credential token to your backend
-             const response = await api.post('/auth/google', {
+            const response = await api.post('/auth/google', {
                 credential: credentialResponse.credential,
             });
 
@@ -43,7 +43,6 @@ const GoogleLoginButton = () => {
             <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                useOneTap 
                 theme="filled_black"
                 text="continue_with"
                 shape="pill"
