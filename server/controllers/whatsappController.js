@@ -360,14 +360,14 @@ export const initializeClient = async (businessId) => {
 
                 await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
 
-                // Stable Reset: Only clear attempts if we stay connected for 30s
+                // Stable Reset: Only clear attempts if we stay connected for 5s (Faster stability check)
                 session.stableTimer = setTimeout(async () => {
-                    console.log(`[WhatsApp] [STABLE] Session ${businessId} has stayed open for 30s. Resetting backoff.`);
+                    console.log(`[WhatsApp] [STABLE] Session ${businessId} has stayed open for 5s. Resetting backoff.`);
                     session.reconnectAttempts = 0;
                     try {
                         await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: 0 } });
                     } catch (e) { }
-                }, 30000);
+                }, 5000);
 
                 // Presence update to keep alive
                 try {
