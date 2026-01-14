@@ -136,6 +136,18 @@ export const startWorker = async () => {
                     return;
                 }
 
+                // DEEP DEBUG: Check internal auth state
+                console.log(`[WORKER] [Job:${job.id}] Auth Debug: User=${sock.user?.id}, Me=${sock.authState?.creds?.me?.id}, Signal=${!!sock.authState?.creds?.signalIdentities}`);
+
+                if (!sock.authState?.creds?.me) {
+                    console.error(`[WORKER] [Job:${job.id}] CRITICAL: Socket has user but internal authState.creds.me is MISSING. Force restoring...`);
+                    // Force restore
+                    initializing.delete(businessId);
+                    delete clients[businessId];
+                    await initializeClient(businessId);
+                    throw new Error("RETRY_LATER: Internal state corrupted, restoring...");
+                }
+
                 // 🔌 SOCKET HEALTH CHECK (NEW)
                 // 🔌 SOCKET HEALTH CHECK REMOVED (Simplification)
                 // We rely on sock.sendMessage throwing an error if broken.
