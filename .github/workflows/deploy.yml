@@ -20,15 +20,18 @@ jobs:
             # Navigate to project directory (Adjust path if needed)
             cd /var/www/nextsms.co.in/next_sms
 
-            # Pull latest code
-            git pull origin main
+            # Force sync with GitHub
+            git fetch origin main
+            git reset --hard origin/main
 
             # Install dependencies
             echo "Installing dependencies..."
             cd client && npm install && npm run build
             cd ../server && npm install
-
-            # Restart Application
+            
+            # Restart Application cleanly
             echo "Restarting application..."
             cd ..
-            pm2 restart ecosystem.config.js --env production
+            pm2 delete nextsms-server || true
+            pm2 start ecosystem.config.js --env production
+            pm2 save
