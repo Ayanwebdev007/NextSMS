@@ -6,31 +6,52 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Explicitly point to the .env file in the server directory
 const envPath = path.join(__dirname, '.env');
-const result = dotenv.config({ path: envPath });
 
-console.log('[ENV] Loading .env from:', envPath);
+console.log('[ENV] STARTING ROBUST LOADER');
+console.log('[ENV] Target Path:', envPath);
+
+// 1. Try standard dotenv
+const result = dotenv.config({ path: envPath, override: true });
+
 if (result.error) {
-    console.error('[ENV] Dotenv Error:', result.error);
-} else {
-    const keysCount = Object.keys(result.parsed || {}).length;
-    console.log('[ENV] Dotenv successfully parsed', keysCount, 'variables.');
+    console.error('[ENV] Dotenv Standard Error:', result.error.message);
 }
 
-// Diagnostic: Check if we can read the file manually
+// 2. Manual Parsing Fallback (Foolproof)
 try {
-    const content = fs.readFileSync(envPath, 'utf8');
-    console.log('[ENV] Manual check: File size is', content.length, 'bytes.');
-    if (content.includes('RAZORPAY_KEY_ID')) {
-        console.log('[ENV] Manual check: RAZORPAY_KEY_ID exists in file string.');
+    if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        console.log('[ENV] File exists. Size:', content.length, 'bytes.');
+
+        const lines = content.split(/\r?\n/);
+        let count = 0;
+
+        lines.forEach(line => {
+            const trimmed = line.trim();
+            // Ignore comments and empty lines
+            if (!trimmed || trimmed.startsWith('#')) return;
+
+            const [key, ...valueParts] = trimmed.split('=');
+            if (key) {
+                const value = valueParts.join('=').trim().replace(/^['"]|['"]$/g, '');
+                process.env[key.trim()] = value;
+                count++;
+            }
+        });
+        console.log(`[ENV] Manually injected ${count} variables.`);
     } else {
-        console.error('[ENV] Manual check: RAZORPAY_KEY_ID NOT FOUND in file string!');
+        console.error('[ENV] CRITICAL: .env file does not exist at', envPath);
     }
 } catch (err) {
-    console.error('[ENV] Manual check: Could not read file!', err.message);
+    console.error('[ENV] Manual Parse Error:', err.message);
 }
 
-if (!process.env.RAZORPAY_KEY_ID) {
-    console.error('[ENV] CRITICAL: RAZORPAY_KEY_ID is missing from process.env after config!');
+// 3. Final Verification
+if (process.env.RAZORPAY_KEY_ID) {
+    console.log('[ENV] SUCCESS: RAZORPAY_KEY_ID is now loaded.');
+} else {
+    console.error('[ENV] FAILURE: RAZORPAY_KEY_ID is still missing!');
 }
+
+export default process.env;
