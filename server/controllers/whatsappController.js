@@ -151,11 +151,28 @@ const acquireMasterLock = async (businessId) => {
         const now = new Date();
         const timeout = 60000; // 1 minute timeout for stale locks
 
-        // Attempt to take the lock if:
-        // 1. No master exists (null)
-        // 2. We are already the master
-        // 3. The current master hasn't heart-beated in a while (stale)
-        const session = await SessionStore.findOneAndUpdate(
+        // 1. First, check if the session entry exists
+        let session = await SessionStore.findOne({ businessId });
+
+        // 2. If it doesn't exist, try to create it (handles E11000 race condition)
+        if (!session) {
+            try {
+                session = await SessionStore.create({
+                    businessId,
+                    masterId: INSTANCE_ID,
+                    lastHeartbeat: now
+                });
+                return true;
+            } catch (err) {
+                if (err.code === 11000) {
+                    // Conflict: someone else created it during our call. Proceed to update.
+                    session = await SessionStore.findOne({ businessId });
+                } else throw err;
+            }
+        }
+
+        // 3. Try to acquire the lock atomically
+        const result = await SessionStore.findOneAndUpdate(
             {
                 businessId,
                 $or: [
@@ -170,16 +187,16 @@ const acquireMasterLock = async (businessId) => {
                     lastHeartbeat: now
                 }
             },
-            { new: true, upsert: true }
+            { new: true }
         );
 
-        const isMaster = session.masterId === INSTANCE_ID;
+        const isMaster = result?.masterId === INSTANCE_ID;
         if (!isMaster) {
-            console.warn(`[LOCK] Business ${businessId} is already managed by another instance: ${session.masterId}`);
+            console.warn(`[LOCK] [${INSTANCE_ID}] Rejected - Managed by another instance: ${result?.masterId || 'unknown'}`);
         }
         return isMaster;
     } catch (err) {
-        console.error(`[LOCK] Failed to acquire lock for ${businessId}:`, err.message);
+        console.error(`[LOCK] [${INSTANCE_ID}] Critical error:`, err.message);
         return false;
     }
 };
@@ -327,14 +344,11 @@ export const initializeClient = async (businessId) => {
                     // Persist attempts to DB so restart doesn't reset backoff
                     await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: nextAttempts } });
 
-                    // 440 Conflict Recovery logic
+                    // ABSOLUTE ZERO-WIPE: No longer resetting keys on 440.
+                    // Just log it and rely on the Master Lock to eventually resolve the conflict.
                     const isConflict = statusCode === 440;
                     if (isConflict) {
-                        console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Attempting stream reset...`);
-                        try {
-                            await SessionStore.findOneAndUpdate({ businessId }, { $set: { "data.keys": {} } });
-                            console.log(`[WhatsApp] [${INSTANCE_ID}] Stream keys cleared.`);
-                        } catch (err) { }
+                        console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Retrying without modifications...`);
                     }
 
                     const baseDelay = isConflict ? 10000 : 2000;
