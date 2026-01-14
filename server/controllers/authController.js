@@ -86,48 +86,60 @@ export const handleGoogleLogin = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Google credential token is required.' });
     }
 
-    const ticket = await googleClient.verifyIdToken({
-        idToken: credential,
-        audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    try {
+        console.log('[AUTH] Starting Google token verification...');
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
 
-    const { name, email, sub: googleId } = ticket.getPayload();
-    let business = await Business.findOne({ googleId });
+        const { name, email, sub: googleId } = ticket.getPayload();
+        console.log(`[AUTH] Google User Verified: ${email}`);
 
-    if (!business) {
-        business = await Business.findOne({ email });
+        let business = await Business.findOne({ googleId });
+
+        if (!business) {
+            business = await Business.findOne({ email });
+
+            if (business) {
+                console.log(`[AUTH] Linking existing account to Google ID for: ${email}`);
+                business.googleId = googleId;
+                await business.save();
+            } else {
+                console.log(`[AUTH] Creating new account for: ${email}`);
+                const placeholderPassword = `google_${googleId}`;
+                const trialExpiryDate = new Date();
+                trialExpiryDate.setDate(trialExpiryDate.getDate() + 30);
+
+                business = await Business.create({
+                    name,
+                    email,
+                    googleId,
+                    password: placeholderPassword,
+                    credits: 50,
+                    planExpiry: trialExpiryDate
+                });
+            }
+        }
 
         if (business) {
-            business.googleId = googleId;
-            await business.save();
-        } else {
-            // --- THIS IS THE CRITICAL FIX ---
-            // When a new user is created via Google, they now also get the trial credits.
-            const placeholderPassword = `google_${googleId}`;
-            const trialExpiryDate = new Date();
-            trialExpiryDate.setDate(trialExpiryDate.getDate() + 30);
-
-            business = await Business.create({
-                name,
-                email,
-                googleId,
-                password: placeholderPassword,
-                credits: 50, // Assign 50 trial credits
-                planExpiry: trialExpiryDate // Set the 30-day trial expiry
+            res.status(200).json({
+                _id: business.id,
+                name: business.name,
+                email: business.email,
+                role: business.role,
+                token: generateToken(business._id),
             });
+        } else {
+            throw new Error('Business object not found after creation/search');
         }
-    }
-
-    if (business) {
-        res.status(200).json({
-            _id: business.id,
-            name: business.name,
-            email: business.email,
-            role: business.role,
-            token: generateToken(business._id),
+    } catch (error) {
+        console.error('[AUTH] Google Login Error:', error.message);
+        console.error('[AUTH] Stack Trace:', error.stack);
+        res.status(500).json({
+            message: 'Error during Google authentication.',
+            error: error.message
         });
-    } else {
-        return res.status(500).json({ message: 'Error during Google authentication.' });
     }
 });
 

@@ -117,6 +117,16 @@ const server = app.listen(PORT, () => {
   console.log('listening on port', PORT);
 });
 
+// --- Global Error Handler --- //
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', err.message);
+  console.error(err.stack);
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal Server Error',
+    error: process.env.NODE_ENV === 'production' ? {} : err
+  });
+});
+
 // --- Graceful shutdown --- //
 process.on('SIGINT', async () => {
   console.log('\nSIGINT signal received: Gracefully closing server...');
