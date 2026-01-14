@@ -29,21 +29,18 @@ if (!fs.existsSync(AUTH_PATH)) {
 /* =======================
    DB AUTH HELPERS
 ======================= */
+/* =======================
+   DB AUTH HELPERS
+======================= */
 const useMongoDBAuthState = async (businessId) => {
     // 1. Initial Read from DB
     let creds;
-    let keys = {};
     const existingSession = await SessionStore.findOne({ businessId });
 
     if (existingSession && existingSession.data && existingSession.data.creds) {
         // Deserialize existing session from DB
         console.log(`[AUTH] Restoring session from DB for ${businessId}`);
         creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
-
-        // Restore keys if they exist
-        if (existingSession.data.keys) {
-            keys = existingSession.data.keys;
-        }
     } else {
         // Initialize fresh credentials (no DB session exists)
         console.log(`[AUTH] Initializing fresh credentials for ${businessId}`);
@@ -55,7 +52,7 @@ const useMongoDBAuthState = async (businessId) => {
     const saveCreds = async () => {
         try {
             const result = await SessionStore.findOneAndUpdate(
-                { businessId: businessId }, // businessId is already an ObjectId from the parameter
+                { businessId: businessId },
                 {
                     $set: {
                         "data.creds": JSON.parse(JSON.stringify(creds, BufferJSON.replacer))
@@ -90,26 +87,47 @@ const useMongoDBAuthState = async (businessId) => {
                 },
                 set: async (data) => {
                     try {
-                        const updateOps = {};
+                        // 🟢 ATOMIC STABILITY FIX (Read-Modify-Write)
+                        // Instead of blind $set (which fails on deep merges), we fetch the full doc,
+                        // apply changes in memory, and save it back. This ensures consistency.
+
+                        const session = await SessionStore.findOne({ businessId });
+
+                        if (!session) {
+                            // This should rarely happen if creds are saved first, but we handle it.
+                            // However, we can't easily create a session here without creds.
+                            // We depend on saveCreds being called at least once.
+                            console.warn(`[AUTH] Checking session existence for keys... Session missing for ${businessId}`);
+                            return;
+                        }
+
+                        if (!session.data) session.data = {};
+
+                        let mutationCount = 0;
                         for (const type in data) {
+                            // Ensure the category exists (e.g., 'sender-key', 'session')
+                            if (!session.data[type]) session.data[type] = {};
+
                             for (const id in data[type]) {
                                 const val = data[type][id];
                                 if (val) {
-                                    updateOps[`data.${type}.${id}`] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
+                                    // Store with BufferJSON handling
+                                    session.data[type][id] = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
                                 } else {
-                                    updateOps[`data.${type}.${id}`] = null; // Mark for deletion/nulling
+                                    // Delete if null/undefined
+                                    delete session.data[type][id];
                                 }
+                                mutationCount++;
                             }
                         }
 
-                        if (Object.keys(updateOps).length > 0) {
-                            await SessionStore.findOneAndUpdate(
-                                { businessId },
-                                { $set: updateOps },
-                                { upsert: true }
-                            );
-                            console.log(`[AUTH] Atomic keys updated in DB for ${businessId}`);
+                        if (mutationCount > 0) {
+                            // ⚠️ CRITICAL: Mongoose Mixed types require explicit marking
+                            session.markModified('data');
+                            await session.save();
+                            console.log(`[AUTH] Atomic keys updated for ${businessId} (${mutationCount} keys)`);
                         }
+
                     } catch (err) {
                         console.error(`[AUTH] Failed to save keys for ${businessId}:`, err.message);
                         throw err;
@@ -393,10 +411,18 @@ export const initializeClient = async (businessId) => {
                         console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Retrying without modifications...`);
                     }
 
-                    const baseDelay = isConflict ? 10000 : 2000;
-                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 90000);
+                    if (nextAttempts >= 10) {
+                        console.error(`[WhatsApp] Max reconnect attempts (10) reached for ${businessId}. Stopping retry loop.`);
+                        delete clients[businessId];
+                        initializing.delete(businessId);
+                        await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
+                        return;
+                    }
 
-                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts})`);
+                    const baseDelay = isConflict ? 10000 : 2000;
+                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000); // MAX wait 60s
+
+                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts}/10)`);
 
                     clients[businessId] = {
                         ...sessionState,
@@ -411,6 +437,7 @@ export const initializeClient = async (businessId) => {
                     delete clients[businessId];
                     initializing.delete(businessId);
                     await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
+
                     await Activity.create({
                         businessId,
                         event: 'auth_failure',

@@ -110,11 +110,8 @@ export const startWorker = async () => {
                 }
 
                 // 🔌 SOCKET HEALTH CHECK (NEW)
-                if (sock.ws && sock.ws.isOpen === false) {
-                    console.warn(`[WORKER] [Job:${job.id}] ⚠️ Socket status is 'ready' BUT ws.isOpen is FALSE! Force-closing to trigger reconnect...`);
-                    try { sock.end(new Error('Socket dead in worker')); } catch (e) { }
-                    throw new Error("RETRY_LATER: Socket dead");
-                }
+                // 🔌 SOCKET HEALTH CHECK REMOVED (Simplification)
+                // We rely on sock.sendMessage throwing an error if broken.
 
                 console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). WS Open: ${sock.ws?.isOpen}. Preparing payload...`);
 
