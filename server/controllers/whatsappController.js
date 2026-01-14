@@ -10,6 +10,15 @@ import path from "path";
 import os from "os";
 import { SessionStore } from "../models/sessionStore.model.js";
 import { BufferJSON } from "@whiskeysockets/baileys"; // Need BufferJSON to serialize/deserialize
+import Redis from "ioredis";
+
+const redis = new Redis(process.env.REDIS_URL || {
+    host: process.env.REDIS_HOST || "127.0.0.1",
+    port: process.env.REDIS_PORT || 6379,
+});
+
+redis.on("error", (err) => console.error("[REDIS] Connection Error:", err.message));
+redis.on("connect", () => console.log("[REDIS] Connected for Session Caching"));
 
 export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
@@ -48,30 +57,9 @@ const useMongoDBAuthState = async (businessId) => {
         creds = initAuthCreds();
     }
 
-    // CRITICAL: LRU cache for session keys to prevent memory leaks
-    const { LRUCache } = await import('lru-cache');
-    const keyCache = new LRUCache({
-        max: 1000,  // Max 1000 key entries (prevents unlimited growth)
-        ttl: 1000 * 60 * 60 * 24,  // 24 hour TTL
-        updateAgeOnGet: true  // Refresh on access
-    });
-
-    // Pre-load existing keys into LRU cache
-    if (existingSession?.data) {
-        for (const type in existingSession.data) {
-            if (type !== 'creds') {
-                for (const id in existingSession.data[type]) {
-                    const cacheKey = `${type}:${id}`;
-                    keyCache.set(cacheKey, existingSession.data[type][id]);
-                }
-            }
-        }
-    }
-
     // 2. Save Function (Accepts partial updates)
     const saveCreds = async (update) => {
         try {
-            // CRITICAL FIX: Update in-memory creds if an update is provided
             if (update && typeof update === 'object') {
                 Object.assign(creds, update);
             }
@@ -85,7 +73,12 @@ const useMongoDBAuthState = async (businessId) => {
                 },
                 { upsert: true, new: true }
             );
-            console.log(`[AUTH] Credentials saved to DB for ${businessId}`);
+
+            // Also cache creds in Redis for multi-instance access
+            const redisKey = `auth:${businessId}:creds`;
+            await redis.set(redisKey, JSON.stringify(creds, BufferJSON.replacer), "EX", 86400 * 7); // 7 days
+
+            console.log(`[AUTH] Credentials saved for ${businessId}`);
             return result;
         } catch (err) {
             console.error(`[AUTH] Failed to save credentials for ${businessId}:`, err.message);
@@ -99,12 +92,32 @@ const useMongoDBAuthState = async (businessId) => {
             keys: {
                 get: async (type, ids) => {
                     const data = {};
-                    // Read from LRU cache
+                    const missingIds = [];
+
+                    // Try Redis first
                     for (const id of ids) {
-                        const cacheKey = `${type}:${id}`;
-                        const val = keyCache.get(cacheKey);
-                        if (val) {
-                            data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
+                        const redisKey = `auth:${businessId}:${type}:${id}`;
+                        const cached = await redis.get(redisKey);
+                        if (cached) {
+                            data[id] = JSON.parse(cached, BufferJSON.reviver);
+                        } else {
+                            missingIds.push(id);
+                        }
+                    }
+
+                    // Fallback to MongoDB for missing keys
+                    if (missingIds.length > 0) {
+                        const session = await SessionStore.findOne({ businessId });
+                        if (session?.data?.[type]) {
+                            for (const id of missingIds) {
+                                const val = session.data[type][id];
+                                if (val) {
+                                    data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
+                                    // Back-fill Redis
+                                    const redisKey = `auth:${businessId}:${type}:${id}`;
+                                    redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7);
+                                }
+                            }
                         }
                     }
                     return data;
@@ -118,16 +131,16 @@ const useMongoDBAuthState = async (businessId) => {
                             for (const id in data[type]) {
                                 const val = data[type][id];
                                 const keyPath = `data.${type}.${id}`;
-                                const cacheKey = `${type}:${id}`;
+                                const redisKey = `auth:${businessId}:${type}:${id}`;
 
                                 if (val) {
-                                    // Save to LRU cache and prepare DB update
                                     const serialized = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
-                                    keyCache.set(cacheKey, serialized);
+                                    // Update Redis (Fast)
+                                    redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7);
                                     updates[keyPath] = serialized;
                                 } else {
-                                    // Delete from cache and mark for DB deletion
-                                    keyCache.delete(cacheKey);
+                                    // Delete from Redis
+                                    redis.del(redisKey);
                                     deletions[keyPath] = 1;
                                 }
                             }
@@ -138,15 +151,14 @@ const useMongoDBAuthState = async (businessId) => {
                         if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
                         if (Object.keys(operations).length > 0) {
-                            // Fire and forget to DB (cache is already updated)
+                            // Update MongoDB (Persistent)
                             SessionStore.updateOne({ businessId }, operations, { upsert: true }).catch(err => {
                                 console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
                             });
-                            console.log(`[AUTH] Atomic keys updated for ${businessId} (${Object.keys(updates).length} set, ${Object.keys(deletions).length} del)`);
+                            console.log(`[AUTH] Keys synchronized for ${businessId}`);
                         }
                     } catch (err) {
-                        console.error(`[AUTH] Failed to save keys for ${businessId}:`, err.message);
-                        // Don't throw - allow Baileys to continue
+                        console.error(`[AUTH] Failed to sync keys for ${businessId}:`, err.message);
                     }
                 }
             }
