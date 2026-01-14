@@ -39,6 +39,7 @@ export const startWorker = async () => {
     worker = new Worker(
         "nextsms_prod_v1",
         async (job) => {
+
             const { messageId, businessId, campaignId, recipient, text, mediaUrl, filePath, variables, minDelay, maxDelay } =
                 job.data;
 
