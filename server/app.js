@@ -20,7 +20,7 @@ import { handleWebhook } from './controllers/paymentController.js';
 import { startKeepAlive } from './utils/keepAlive.js';
 
 connectDB().then(async () => {
-  await restoreSessions();
+  // await restoreSessions(); // MOVED TO START_SERVER SUCCESS
 
   // Start keep-alive mechanism for Render free tier
   if (process.env.NODE_ENV === 'production') {
@@ -165,9 +165,16 @@ const startServer = async (retries = 3) => {
   try {
     server = app.listen(PORT); // Logs moved to 'listening' event to avoid race conditions
 
-    server.on('listening', () => {
+    server.on('listening', async () => {
       console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
       console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
+
+      // ONLY restore sessions if we successfully bound to the port
+      // This prevents "zombie" processes from connecting to WA
+      try {
+        const { restoreSessions } = await import('./controllers/whatsappController.js');
+        await restoreSessions();
+      } catch (e) { console.error('Failed to restore sessions:', e); }
     });
 
     server.on('error', (err) => {
