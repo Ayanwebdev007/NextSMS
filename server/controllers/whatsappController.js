@@ -220,6 +220,23 @@ const acquireMasterLock = async (businessId) => {
 
             if (masterHostname === myHostname) {
                 console.warn(`[LOCK] [${INSTANCE_ID}] FORCE TAKEOVER from same-host: ${currentMaster.masterId}`);
+
+                // 💀 GHOST KILLER: Extract PID and kill the zombie process
+                // Format: hostname-PID (e.g., srv123-45678)
+                try {
+                    const ghostPid = currentMaster.masterId.split('-').pop();
+                    if (ghostPid && !isNaN(ghostPid)) {
+                        const { exec } = await import('child_process');
+                        console.log(`[LOCK] 💀 Executing TARGETED KILL on zombie PID: ${ghostPid}`);
+                        exec(`kill -9 ${ghostPid}`, (err) => {
+                            if (err) console.log(`[LOCK] Kill result: ${err.message}`);
+                            else console.log(`[LOCK] Zombie ${ghostPid} eliminated.`);
+                        });
+                    }
+                } catch (kErr) {
+                    console.error(`[LOCK] Failed to kill zombie: ${kErr.message}`);
+                }
+
                 await SessionStore.findOneAndUpdate(
                     { businessId },
                     {
