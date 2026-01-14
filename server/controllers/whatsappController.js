@@ -190,11 +190,14 @@ const acquireMasterLock = async (businessId) => {
             { new: true }
         );
 
-        const isMaster = result?.masterId === INSTANCE_ID;
-        if (!isMaster) {
-            console.warn(`[LOCK] [${INSTANCE_ID}] Rejected - Managed by another instance: ${result?.masterId || 'unknown'}`);
+        if (result?.masterId === INSTANCE_ID) {
+            return true;
         }
-        return isMaster;
+
+        // acquisition failed, find out who owns it
+        const currentMaster = await SessionStore.findOne({ businessId });
+        console.warn(`[LOCK] [${INSTANCE_ID}] Rejected - Controlled by: ${currentMaster?.masterId || 'unknown'}`);
+        return false;
     } catch (err) {
         console.error(`[LOCK] [${INSTANCE_ID}] Critical error:`, err.message);
         return false;

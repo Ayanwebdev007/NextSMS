@@ -102,13 +102,6 @@ export const startWorker = async () => {
                     await job.moveToDelayed(Date.now() + 5000);
                     return;
                 }
-
-                const sockState = sock.ws?.readyState;
-                if (sockState !== 1) { // 1 = OPEN
-                    console.warn(`[WORKER] [Job:${job.id}] WebSocket not open (State: ${sockState}). Waiting...`);
-                    throw new Error("RETRY_LATER: WebSocket opening");
-                }
-
                 console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). Preparing payload...`);
 
                 // 🔗 Variable Replacement Logic
