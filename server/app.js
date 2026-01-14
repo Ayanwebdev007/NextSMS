@@ -146,12 +146,13 @@ app.use(express.static(clientBuildPath));
 
 // The "catch-all" handler: for any request that doesn't
 // match one above, send back React's index.html file.
-app.use((req, res) => {
+// We use a regex /* to be safe with modern Express/path-to-regexp
+app.get('/*', (req, res) => {
   const indexPath = path.join(clientBuildPath, 'index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
       console.error('[SERVER ERROR] Failed to send index.html:', err.message);
-      res.status(500).send('Frontend build is missing or inaccessible. Run npm run build in client folder.');
+      res.status(500).send('Frontend build is missing or inaccessible.');
     }
   });
 });

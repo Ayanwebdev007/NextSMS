@@ -44,7 +44,11 @@ try {
 
 const CRITICAL_KEYS = ['GOOGLE_CLIENT_ID', 'RAZORPAY_KEY_ID', 'JWT_SECRET', 'MONGO_URI'];
 CRITICAL_KEYS.forEach(key => {
-    if (!process.env[key]) console.error(`[ENV] MISSING CRITICAL KEY: ${key}`);
+    if (!process.env[key]) {
+        console.error(`[ENV] ❌ MISSING CRITICAL KEY: ${key}`);
+    } else {
+        console.log(`[ENV] ✅ VERIFIED: ${key}`);
+    }
 });
 
 export default process.env;
