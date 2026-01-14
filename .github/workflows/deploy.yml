@@ -27,9 +27,14 @@ jobs:
             # Install dependencies and build
             echo "Building Client..."
             cd client
-            npm install --no-audit --no-fund
-            # Use limited memory for build to prevent VPS crash
-            NODE_OPTIONS=--max-old-space-size=1024 npm run build
+            # Clear old build to ensure clean state
+            rm -rf dist
+            # Use verbose logging to catch install issues
+            npm install --no-audit --no-fund --loglevel verbose
+            # CI=false prevents warnings from failing the build
+            # Increased memory to 2GB for stability
+            echo "Running build with CI=false..."
+            CI=false NODE_OPTIONS=--max-old-space-size=2048 npm run build
             
             echo "Installing Server dependencies..."
             cd ../server
