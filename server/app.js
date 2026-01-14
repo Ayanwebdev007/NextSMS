@@ -130,8 +130,18 @@ app.get('/api/debug/error', (req, res) => {
 app.use('/api/payment', paymentRoutes);
 
 // --- Serve Frontend in Production --- //
-// Serve static files from the React app
-const clientBuildPath = path.join(__dirname, '../client/dist');
+const clientBuildPath = path.resolve(__dirname, '../client/dist');
+const indexPath = path.join(clientBuildPath, 'index.html');
+
+console.log('[SERVER] 📁 Client Build Path:', clientBuildPath);
+import fs from 'fs';
+if (fs.existsSync(indexPath)) {
+  console.log('[SERVER] ✅ index.html found at:', indexPath);
+} else {
+  console.error('[SERVER] ❌ index.html NOT FOUND at:', indexPath);
+  console.log('[SERVER] 📂 Contents of dist:', fs.existsSync(clientBuildPath) ? fs.readdirSync(clientBuildPath) : 'dist folder missing');
+}
+
 app.use(express.static(clientBuildPath));
 
 // The "catch-all" handler: for any request that doesn't
