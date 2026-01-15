@@ -358,7 +358,7 @@ export const startWorker = async () => {
             lockDuration: 180000, // INCREASED: Allow up to 180s (Reduces lock renewal traffic)
             stalledInterval: 60000, // INCREASED: 1m (Reduces Redis checks for stalled jobs)
             maxStalledCount: 1,
-            drainDelay: 10,
+            drainDelay: 30000, // EXTREME: 30s delay when the queue is empty (Reduces background traffic)
             limiter: {
                 max: 50,      // Max 50 messages per client
                 duration: 60000,  // per minute
