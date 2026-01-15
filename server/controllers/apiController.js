@@ -5,9 +5,9 @@ import { messageQueue } from '../workers/queue.js';
 
 export const sendSimpleMessage = asyncHandler(async (req, res) => {
     // Support both GET (query) and POST (body)
-    const receiver = req.query.receiver || req.body.receiver;
-    const msgtext = req.query.msgtext || req.body.msgtext;
-    const mediaUrl = req.query.mediaUrl || req.body.mediaUrl;
+    const receiver = req.query.receiver || req.body?.receiver;
+    const msgtext = req.query.msgtext || req.body?.msgtext;
+    const mediaUrl = req.query.mediaUrl || req.body?.mediaUrl;
 
     const businessId = req.business._id;
 
