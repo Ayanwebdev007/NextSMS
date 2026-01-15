@@ -181,6 +181,7 @@ const ConnectionCard = () => {
             const api = createAuthenticatedApi(token);
             const response = await api.post("/session/connect");
             setQrCodeUrl(response.data.qrCodeUrl);
+            setQrAttempt(response.data.qrAttempt || 1);
             setIsModalOpen(true);
             setStatus("qr_pending");
 

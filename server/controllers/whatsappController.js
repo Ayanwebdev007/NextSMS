@@ -709,7 +709,10 @@ export const connectSession = asyncHandler(async (req, res) => {
     const timer = setInterval(() => {
         if (clients[businessId]?.qr) {
             clearInterval(timer);
-            return res.json({ qrCodeUrl: clients[businessId].qr });
+            return res.json({
+                qrCodeUrl: clients[businessId].qr,
+                qrAttempt: clients[businessId].qrAttempt || 0
+            });
         }
 
         if (++attempts > 30) {
@@ -745,7 +748,8 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
     if (client?.qr) {
         return res.json({
             status: "qr_pending",
-            qrCodeUrl: client.qr
+            qrCodeUrl: client.qr,
+            qrAttempt: client.qrAttempt || 0
         });
     }
 
