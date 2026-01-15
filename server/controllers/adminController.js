@@ -7,11 +7,35 @@ import { Message } from '../models/message.model.js';
 import { Activity } from '../models/activity.model.js';
 
 
+import { clients } from './whatsappController.js';
+
 export const getAllBusinesses = asyncHandler(async (req, res) => {
     const businesses = await Business.find({})
         .select('-password') // Exclude passwords for security
         .populate('plan');
-    res.status(200).json(businesses);
+
+    // 🛰️ Add Live WhatsApp Status from Memory
+    const businessesWithStatus = businesses.map(b => {
+        const busObj = b.toObject();
+        const client = clients[busObj._id.toString()];
+
+        let waStatus = busObj.sessionStatus || 'disconnected';
+
+        if (client?.status === 'ready') {
+            waStatus = 'connected';
+        } else if (client?.qr) {
+            waStatus = 'qr_pending';
+        } else if (client || busObj.sessionStatus === 'initializing') {
+            waStatus = 'initializing';
+        }
+
+        return {
+            ...busObj,
+            waStatus
+        };
+    });
+
+    res.status(200).json(businessesWithStatus);
 });
 
 

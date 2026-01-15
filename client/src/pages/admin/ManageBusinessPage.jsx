@@ -132,8 +132,9 @@ const ManageBusinessesPage = () => {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">Credits</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-widest">Account</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-widest">WhatsApp</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-widest">Credits</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-neutral-400 uppercase">Plan</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-neutral-400 uppercase tracking-widest">Actions</th>
               </tr>
@@ -152,6 +153,20 @@ const ManageBusinessesPage = () => {
                       <option value="active">Active</option>
                       <option value="suspended">Suspended</option>
                     </select>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${business.waStatus === "connected" ? "bg-green-500/10 text-green-400" :
+                        business.waStatus === "qr_pending" ? "bg-yellow-500/10 text-yellow-400" :
+                          business.waStatus === "initializing" ? "bg-cyan-500/10 text-cyan-400" :
+                            "bg-neutral-800 text-neutral-500"
+                      }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${business.waStatus === "connected" ? "bg-green-400 animate-pulse" :
+                          business.waStatus === "qr_pending" ? "bg-yellow-400" :
+                            business.waStatus === "initializing" ? "bg-cyan-400 animate-spin" :
+                              "bg-neutral-600"
+                        }`}></div>
+                      {business.waStatus.replace('_', ' ')}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-cyan-400 font-bold">{business.credits}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">
