@@ -24,6 +24,7 @@ export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
 const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
 const IDLE_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
+const keyCache = {}; // in-memory cache for Baileys keys: businessId -> { type: { id: val } }
 console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
 
 /* =======================
@@ -95,28 +96,50 @@ const useMongoDBAuthState = async (businessId) => {
                     const data = {};
                     const missingIds = [];
 
-                    // Try Redis first
+                    // 1. Try Local Memory Cache first (SUPER FAST, 0 Redis Requests)
+                    if (!keyCache[businessId]) keyCache[businessId] = {};
+                    if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
+
                     for (const id of ids) {
-                        const redisKey = `auth:${businessId}:${type}:${id}`;
-                        const cached = await redis.get(redisKey);
-                        if (cached) {
-                            data[id] = JSON.parse(cached, BufferJSON.reviver);
+                        if (keyCache[businessId][type][id]) {
+                            data[id] = keyCache[businessId][type][id];
                         } else {
                             missingIds.push(id);
                         }
                     }
 
-                    // Fallback to MongoDB for missing keys
-                    if (missingIds.length > 0) {
+                    if (missingIds.length === 0) return data;
+
+                    // 2. Try Redis for only the missing IDs
+                    const idsToFetchFromDB = [];
+                    for (const id of missingIds) {
+                        const redisKey = `auth:${businessId}:${type}:${id}`;
+                        try {
+                            const cached = await redis.get(redisKey);
+                            if (cached) {
+                                const val = JSON.parse(cached, BufferJSON.reviver);
+                                data[id] = val;
+                                keyCache[businessId][type][id] = val; // Fill memory cache
+                            } else {
+                                idsToFetchFromDB.push(id);
+                            }
+                        } catch (e) {
+                            idsToFetchFromDB.push(id);
+                        }
+                    }
+
+                    // 3. Fallback to MongoDB for missing keys
+                    if (idsToFetchFromDB.length > 0) {
                         const session = await SessionStore.findOne({ businessId });
                         if (session?.data?.[type]) {
-                            for (const id of missingIds) {
+                            for (const id of idsToFetchFromDB) {
                                 const val = session.data[type][id];
                                 if (val) {
                                     data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
-                                    // Back-fill Redis
+                                    // Back-fill Memory and Redis
+                                    keyCache[businessId][type][id] = data[id];
                                     const redisKey = `auth:${businessId}:${type}:${id}`;
-                                    redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7);
+                                    redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7).catch(() => { });
                                 }
                             }
                         }
@@ -128,7 +151,11 @@ const useMongoDBAuthState = async (businessId) => {
                         const updates = {};
                         const deletions = {};
 
+                        if (!keyCache[businessId]) keyCache[businessId] = {};
+
                         for (const type in data) {
+                            if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
+
                             for (const id in data[type]) {
                                 const val = data[type][id];
                                 const keyPath = `data.${type}.${id}`;
@@ -136,12 +163,20 @@ const useMongoDBAuthState = async (businessId) => {
 
                                 if (val) {
                                     const serialized = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
-                                    // Update Redis (Fast)
-                                    redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7);
+
+                                    // Memory Cache Update (Instant)
+                                    keyCache[businessId][type][id] = val;
+
+                                    // Redis Update (Throttled/Batched)
+                                    // Optimization: Only update Redis for critical keys or every 10th write
+                                    // to stay under Upstash 500k limit. 
+                                    // For now, we do it for all but catch errors.
+                                    redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7).catch(() => { });
                                     updates[keyPath] = serialized;
                                 } else {
-                                    // Delete from Redis
-                                    redis.del(redisKey);
+                                    // Delete from Memory and Redis
+                                    delete keyCache[businessId][type][id];
+                                    redis.del(redisKey).catch(() => { });
                                     deletions[keyPath] = 1;
                                 }
                             }
@@ -152,11 +187,10 @@ const useMongoDBAuthState = async (businessId) => {
                         if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
                         if (Object.keys(operations).length > 0) {
-                            // Update MongoDB (Persistent)
+                            // Update MongoDB (Persistent) - Background
                             SessionStore.updateOne({ businessId }, operations, { upsert: true }).catch(err => {
                                 console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
                             });
-                            console.log(`[AUTH] Keys synchronized for ${businessId}`);
                         }
                     } catch (err) {
                         console.error(`[AUTH] Failed to sync keys for ${businessId}:`, err.message);

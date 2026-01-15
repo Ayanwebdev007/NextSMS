@@ -355,22 +355,19 @@ export const startWorker = async () => {
         {
             connection,
             concurrency: 5,  // SCALABILITY: Allow 5 parallel jobs for multi-client support
-            lockDuration: 120000, // INCREASED: Allow up to 120s for processing (handles delays + media)
+            lockDuration: 180000, // INCREASED: Allow up to 180s (Reduces lock renewal traffic)
+            stalledInterval: 60000, // INCREASED: 1m (Reduces Redis checks for stalled jobs)
+            maxStalledCount: 1,
+            drainDelay: 10,
             limiter: {
                 max: 50,      // Max 50 messages per client
                 duration: 60000,  // per minute
                 groupKey: 'businessId' // SCALABILITY: Limits apply per business, not globally
-            }
+            },
+            removeOnComplete: { count: 100 }, // Auto-cleanup to save Redis memory
+            removeOnFail: { count: 100 }
         }
     );
-
-    worker.on("completed", (job) => {
-        console.log(`[WORKER] Job ${job.id} completed.`);
-    });
-
-    worker.on("failed", (job, err) => {
-        console.log(`[WORKER] Job ${job.id} failed: ${err.message}`);
-    });
 
     // 🕵️ WORKER HEARTBEAT (Proves worker is not hung)
     setInterval(() => {
