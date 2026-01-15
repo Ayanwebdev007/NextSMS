@@ -360,7 +360,7 @@ const ConnectionCard = () => {
                                 </p>
                                 <p className="text-xs text-neutral-500 mt-1">
                                     {qrAttempt < 3
-                                        ? "New QR will generate in 10 seconds if not scanned"
+                                        ? `New QR in ${countdown} seconds`
                                         : "Last attempt - scan now or it will expire"}
                                 </p>
                             </div>
