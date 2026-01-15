@@ -14,13 +14,39 @@ console.log('[KEEP-ALIVE] WhatsApp session keep-alive scheduler initialized');
 
 // Run daily at 3 AM
 cron.schedule('0 3 * * *', async () => {
-    console.log('[KEEP-ALIVE] \ud83d\udc9a Running daily session health check...');
+    console.log('[KEEP-ALIVE] 💚 Running daily session health check...');
+
+    try {
+        const { Business } = await import('../models/business.model.js');
+        const { initializeClient } = await import('../controllers/whatsappController.js');
+
+        // 🚀 CRITICAL FIX: Load sessions that are supposed to be connected but are missing from memory
+        // This handles cases where the server restarted and sessions haven't been re-initialized yet.
+        const connectedInDB = await Business.find({ sessionStatus: 'connected' });
+        console.log(`[KEEP-ALIVE] Found ${connectedInDB.length} sessions marked as connected in DB.`);
+
+        for (const business of connectedInDB) {
+            const bId = business._id.toString();
+            if (!clients[bId]) {
+                console.log(`[KEEP-ALIVE] 🛠️  Auto-restoring session for ${bId} after restart...`);
+                try {
+                    await initializeClient(bId);
+                    // Wait a bit for initialization to start before moving to next
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } catch (e) {
+                    console.error(`[KEEP-ALIVE] Failed to auto-restore ${bId}:`, e.message);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[KEEP-ALIVE] Error during DB session restoration:', err.message);
+    }
 
     let pingedCount = 0;
     let failedCount = 0;
 
     for (const [businessId, client] of Object.entries(clients)) {
-        if (client.sock && client.status === 'connected') {
+        if (client.sock && client.status === 'ready') { // status is 'ready' when connected
             try {
                 // Send lightweight presence update to keep session alive
                 await client.sock.sendPresenceUpdate('available');
@@ -28,7 +54,7 @@ cron.schedule('0 3 * * *', async () => {
                 console.log(`[KEEP-ALIVE] ✅ Pinged session for business ${businessId}`);
             } catch (err) {
                 failedCount++;
-                console.error(`[KEEP-ALIVE] ❌ Failed to ping ${businessId}:`, err.message);
+                console.error(`[KEEP-ALIVE] ❌ Failed to ping ${businessId}: ${err.message}`);
             }
         }
     }

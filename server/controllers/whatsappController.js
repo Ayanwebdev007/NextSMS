@@ -20,11 +20,26 @@ const redis = new Redis(process.env.REDIS_URL || {
 redis.on("error", (err) => console.error("[REDIS] Connection Error:", err.message));
 redis.on("connect", () => console.log("[REDIS] Connected for Session Caching"));
 
-export const clients = {}; // businessId -> { sock, qr, status }
+export const clients = {}; // { businessId: { sock, qr, status, reconnectAttempts, stableTimer, qrTimer, qrAttempt, lastActivity } }
 const initializing = new Set();
+const keyCache = {}; // { businessId: { type: { id: data } } }
+
+// 🧹 CACHE CLEANUP: Prevent memory bloat by clearing inactive key caches every hour
+setInterval(() => {
+    const now = Date.now();
+    const INACTIVE_TIMEOUT = 2 * 60 * 60 * 1000; // 2 hours
+
+    for (const businessId in keyCache) {
+        const session = clients[businessId];
+        if (!session || (now - (session.lastActivity || 0) > INACTIVE_TIMEOUT)) { // Added || 0 for safety
+            console.log(`[CLEANUP] Clearing keyCache for inactive business: ${businessId}`);
+            delete keyCache[businessId];
+        }
+    }
+}, 60 * 60 * 1000); // Run every hour
+
 const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
 const IDLE_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
-const keyCache = {}; // in-memory cache for Baileys keys: businessId -> { type: { id: val } }
 console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
 
 /* =======================
@@ -633,9 +648,13 @@ export const initializeClient = async (businessId) => {
                     }
 
                     const baseDelay = isConflict ? 15000 : 2000; // 15s delay for conflicts
-                    const delay = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
+                    const backoff = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
 
-                    console.log(`[WhatsApp] Retrying ${businessId} in ${delay / 1000}s... (Attempt: ${nextAttempts}${isConflict ? ' - CONFLICT LOOP' : '/10'})`);
+                    // 🚀 ADD JITTER: Prevent "Thundering Herd" or synchronized retry loops
+                    const jitter = Math.random() * 5000;
+                    const delay = backoff + jitter;
+
+                    console.log(`[WhatsApp] Retrying ${businessId} in ${(delay / 1000).toFixed(1)}s (inc. ${(jitter / 1000).toFixed(1)}s jitter)... (Attempt: ${nextAttempts}${isConflict ? ' - CONFLICT LOOP' : '/10'})`);
 
                     clients[businessId] = {
                         ...sessionState,

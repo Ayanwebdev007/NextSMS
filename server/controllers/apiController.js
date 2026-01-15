@@ -41,11 +41,33 @@ export const sendSimpleMessage = asyncHandler(async (req, res) => {
     }
 
     // 🔥 Auto-load session if not in memory (API works after months of inactivity)
-    const client = clients[businessId.toString()];
-    if (!client || !client.sock) {
-        console.log(`[API] Session not loaded for ${businessId}. Initializing...`);
+    let client = clients[businessId.toString()];
+    if (!client || client.status !== 'ready') {
+        console.log(`[API] Session not ready for ${businessId}. Initializing/Ensuring readiness...`);
         try {
-            await initializeClient(businessId.toString());
+            // Only trigger init if completely missing
+            if (!client) {
+                await initializeClient(businessId.toString());
+            }
+
+            // 🚀 STRATEGY: Wait up to 10 seconds for session to become "ready"
+            let isReady = false;
+            for (let i = 0; i < 10; i++) {
+                client = clients[businessId.toString()];
+                if (client?.status === 'ready') {
+                    isReady = true;
+                    break;
+                }
+                console.log(`[API] Waiting for session readiness... (${i + 1}s)`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            if (!isReady) {
+                return res.status(503).json({
+                    status: 'error',
+                    message: 'WhatsApp session is still connecting. Please try again in a few seconds.'
+                });
+            }
         } catch (err) {
             console.error(`[API] Failed to initialize session: ${err.message}`);
             return res.status(500).json({
