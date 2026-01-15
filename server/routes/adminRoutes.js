@@ -1,5 +1,5 @@
 import express from 'express';
-import { getAllBusinesses, getContactSubmissions, updateBusinessStatus, updateBusinessCredits, getBusinessActivity, getAdminDashboardStats } from '../controllers/adminController.js';
+import { getAllBusinesses, getContactSubmissions, updateBusinessStatus, updateBusinessCredits, getBusinessActivity, getAdminDashboardStats, adminDisconnectSession } from '../controllers/adminController.js';
 import { createPlan, getAllPlans, updatePlan } from '../controllers/planController.js'; // Moved from planRoutes
 import { protectAdmin } from '../middlewares/adminAuth.js';
 
@@ -14,6 +14,7 @@ router.get('/businesses', getAllBusinesses);
 router.put('/businesses/:id', updateBusinessStatus);
 router.put('/businesses/:id/credits', updateBusinessCredits);
 router.get('/businesses/:id/activity', getBusinessActivity);
+router.post('/businesses/:id/disconnect', adminDisconnectSession);
 
 
 router.route('/plans')

@@ -7,15 +7,16 @@ import { Message } from '../models/message.model.js';
 import { Activity } from '../models/activity.model.js';
 
 
-import { clients } from './whatsappController.js';
+import { clients, deleteSessionFolder } from './whatsappController.js';
+import { SessionStore } from '../models/sessionStore.model.js';
 
 export const getAllBusinesses = asyncHandler(async (req, res) => {
     const businesses = await Business.find({})
         .select('-password') // Exclude passwords for security
         .populate('plan');
 
-    // 🛰️ Add Live WhatsApp Status from Memory
-    const businessesWithStatus = businesses.map(b => {
+    // 🛰️ Add Live WhatsApp Status from Memory & SELF-HEALING SYNC
+    const businessesWithStatus = await Promise.all(businesses.map(async b => {
         const busObj = b.toObject();
         const client = clients[busObj._id.toString()];
 
@@ -27,13 +28,18 @@ export const getAllBusinesses = asyncHandler(async (req, res) => {
             waStatus = 'qr_pending';
         } else if (client || busObj.sessionStatus === 'initializing') {
             waStatus = 'initializing';
+        } else if (waStatus === 'qr_pending' || waStatus === 'initializing') {
+            // 🔥 SELF-HEALING: Status is stuck in DB but not in memory
+            console.log(`[SELF-HEALING] Resetting stuck status for ${busObj._id} (${waStatus} -> disconnected)`);
+            waStatus = 'disconnected';
+            await Business.updateOne({ _id: b._id }, { sessionStatus: 'disconnected', qrAttempt: 0 });
         }
 
         return {
             ...busObj,
             waStatus
         };
-    });
+    }));
 
     res.status(200).json(businessesWithStatus);
 });
@@ -261,4 +267,32 @@ export const getAdminDashboardStats = asyncHandler(async (req, res) => {
         },
         recentActivity
     });
+});
+
+export const adminDisconnectSession = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const businessId = id;
+    const client = clients[businessId];
+
+    console.log(`[ADMIN] Force disconnecting session for ${businessId}`);
+
+    if (client) {
+        client.manualDisconnect = true;
+        if (client.sock) {
+            try { await client.sock.logout(); } catch (e) { }
+        }
+        delete clients[businessId];
+    }
+
+    // Full cleanup
+    await deleteSessionFolder(businessId);
+    await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected", qrAttempt: 0 });
+
+    await Activity.create({
+        businessId,
+        event: 'disconnected',
+        details: 'Admin Override: Session force-disconnected by administrator'
+    });
+
+    res.json({ message: "Session force-disconnected successfully" });
 });

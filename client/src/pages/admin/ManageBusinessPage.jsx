@@ -111,6 +111,23 @@ const ManageBusinessesPage = () => {
     }
   };
 
+  const handleAdminDisconnect = async (business) => {
+    if (!window.confirm(`Force disconnect WhatsApp for ${business.name}? This will clear all connection data.`)) {
+      return;
+    }
+
+    const toastId = toast.loading("Disconnecting session...");
+    try {
+      const api = createAuthenticatedApi(token);
+      await api.post(`/admin/businesses/${business._id}/disconnect`);
+      toast.success("Session disconnected successfully!", { id: toastId });
+      fetchBusinesses();
+    } catch (err) {
+      console.error("Admin disconnect failed:", err);
+      toast.error(err.response?.data?.message || "Failed to disconnect session.", { id: toastId });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -156,14 +173,14 @@ const ManageBusinessesPage = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${business.waStatus === "connected" ? "bg-green-500/10 text-green-400" :
-                        business.waStatus === "qr_pending" ? "bg-yellow-500/10 text-yellow-400" :
-                          business.waStatus === "initializing" ? "bg-cyan-500/10 text-cyan-400" :
-                            "bg-neutral-800 text-neutral-500"
+                      business.waStatus === "qr_pending" ? "bg-yellow-500/10 text-yellow-400" :
+                        business.waStatus === "initializing" ? "bg-cyan-500/10 text-cyan-400" :
+                          "bg-neutral-800 text-neutral-500"
                       }`}>
                       <div className={`w-1.5 h-1.5 rounded-full ${business.waStatus === "connected" ? "bg-green-400 animate-pulse" :
-                          business.waStatus === "qr_pending" ? "bg-yellow-400" :
-                            business.waStatus === "initializing" ? "bg-cyan-400 animate-spin" :
-                              "bg-neutral-600"
+                        business.waStatus === "qr_pending" ? "bg-yellow-400" :
+                          business.waStatus === "initializing" ? "bg-cyan-400 animate-spin" :
+                            "bg-neutral-600"
                         }`}></div>
                       {business.waStatus.replace('_', ' ')}
                     </span>
@@ -195,6 +212,15 @@ const ManageBusinessesPage = () => {
                           <BarChart3 size={16} className="text-yellow-400" />
                           Business Activity
                         </button>
+                        {business.waStatus !== 'disconnected' && (
+                          <button
+                            onClick={() => handleAdminDisconnect(business)}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-neutral-800 hover:text-red-300 transition-colors border-t border-neutral-800 mt-1"
+                          >
+                            <XCircle size={16} />
+                            Disconnect WhatsApp
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

@@ -188,7 +188,7 @@ const useMongoDBAuthState = async (businessId) => {
 
 // Obsolete file helpers replaced by DB logic
 const getSessionPath = (businessId) => path.join(AUTH_PATH, businessId); // Kept for temp init if needed
-const deleteSessionFolder = async (businessId) => {
+export const deleteSessionFolder = async (businessId) => {
     await SessionStore.deleteOne({ businessId });
     // Cleanup local FS just in case
     const sessionPath = getSessionPath(businessId);
