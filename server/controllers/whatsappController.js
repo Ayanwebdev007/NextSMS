@@ -323,24 +323,11 @@ setInterval(async () => {
 /* =======================
    RESTORE SESSIONS
 ======================= */
+// --- SCALABILITY: Lazy Restore ---
+// We no longer load all sessions at startup (to save RAM/CPU).
+// Sessions will "Wake Up" on-demand when someone uses the API or Dashboard.
 export const restoreSessions = async () => {
-    console.log("[SESSION RESTORE] Checking saved Baileys sessions in DB...");
-
-    // Fetch all active sessions from DB
-    const storedSessions = await SessionStore.find({}, '_id businessId');
-    console.log(`[SESSION RESTORE] Found ${storedSessions.length} sessions to restore. Staggering with 2s delay.`);
-
-    for (let i = 0; i < storedSessions.length; i++) {
-        const session = storedSessions[i];
-        const businessId = session.businessId.toString();
-
-        // STAGGERED RESTORE: Prevent CPU/RAM spike by waiting between each init
-        if (i > 0) {
-            await new Promise(r => setTimeout(r, 2000));
-        }
-
-        initializeClient(businessId);
-    }
+    console.log("[LAZY-LOAD] Startup complete. Sessions will load on-demand.");
 };
 
 // --- RAM OPTIMIZATION: Idle Cleanup Loop ---
@@ -643,6 +630,16 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
     // Priority 1: In-memory active sessions
     if (client?.status === "ready") {
         return res.json({ status: "connected" });
+    }
+
+    // --- SCALABILITY: Lazy loading on dashboard visit ---
+    if (!client && !initializing.has(businessId)) {
+        const hasSessionInDB = await SessionStore.findOne({ businessId });
+        if (hasSessionInDB) {
+            console.log(`[LAZY-LOAD] Waking up session for ${businessId} via dashboard view...`);
+            initializeClient(businessId);
+            return res.json({ status: "initializing" });
+        }
     }
 
     // Priority 2: In-memory QR codes

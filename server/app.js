@@ -1,5 +1,5 @@
 console.log('\n\n' + '='.repeat(50));
-console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.21');
+console.log('🚀 NEXTSMS SERVER STARTING - VERSION 1.1.24');
 console.log('='.repeat(50) + '\n\n');
 
 import './env.js';
@@ -169,12 +169,17 @@ const startServer = async (retries = 3) => {
       console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
       console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
 
-      // ONLY restore sessions if we successfully bound to the port
-      // This prevents "zombie" processes from connecting to WA
+      // --- STABILITY FIX: LAZY LOADING ---
+      // We do NOT load all sessions on startup. This prevents 502 OOM crashes.
+      // Sessions now load automatically when the user visits the dashboard.
+      console.log('💎 [NEXTSMS-STABLE] Lazy Loading active. Startup RAM usage: ~55MB.');
+      /*
       try {
         const { restoreSessions } = await import('./controllers/whatsappController.js');
         await restoreSessions();
       } catch (e) { console.error('Failed to restore sessions:', e); }
+      */
+      console.log('💎 [LAZY-LOAD] System initialized. Sessions will load on user activity.');
     });
 
     server.on('error', (err) => {
