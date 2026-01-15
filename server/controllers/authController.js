@@ -102,31 +102,25 @@ export const handleGoogleLogin = asyncHandler(async (req, res) => {
         const { name, email, sub: googleId } = ticket.getPayload();
         console.log(`[AUTH] Google User Verified: ${email}`);
 
-        let business = await Business.findOne({ googleId });
+        // 🔒 SECURITY: Only link Google to EXISTING accounts (no auto-creation)
+        let business = await Business.findOne({ email });
 
         if (!business) {
-            business = await Business.findOne({ email });
-
-            if (business) {
-                console.log(`[AUTH] Linking existing account to Google ID for: ${email}`);
-                business.googleId = googleId;
-                await business.save();
-            } else {
-                console.log(`[AUTH] Creating new account for: ${email}`);
-                const placeholderPassword = `google_${googleId}`;
-                const trialExpiryDate = new Date();
-                trialExpiryDate.setDate(trialExpiryDate.getDate() + 30);
-
-                business = await Business.create({
-                    name,
-                    email,
-                    googleId,
-                    password: placeholderPassword,
-                    credits: 50,
-                    planExpiry: trialExpiryDate
-                });
-            }
+            console.log(`[AUTH] ❌ No account found for: ${email}`);
+            return res.status(404).json({
+                message: 'No account found with this email. Please register first using email and password, then you can login with Google.',
+            });
         }
+
+        // Link Google ID if not already linked
+        if (!business.googleId) {
+            console.log(`[AUTH] Linking existing account to Google ID for: ${email}`);
+            business.googleId = googleId;
+            await business.save();
+        } else {
+            console.log(`[AUTH] Google account already linked for: ${email}`);
+        }
+
 
         if (business) {
             res.status(200).json({

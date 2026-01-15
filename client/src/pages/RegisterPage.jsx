@@ -1,4 +1,4 @@
-import React,{useEffect} from "react";
+import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -9,7 +9,7 @@ import { useAuth } from "../hooks/useAuth";
 // UI Components
 import { Label } from "../components/ui/Label";
 import { Input } from "../components/ui/Input";
-import GoogleLoginButton from "../components/GoogleLogin";
+
 
 const RegisterPage = () => {
   const {
@@ -18,7 +18,7 @@ const RegisterPage = () => {
     formState: { errors, isSubmitting },
   } = useForm();
   const navigate = useNavigate();
-    const { token, isLoading } = useAuth(); // 3. Get token and loading state
+  const { token, isLoading } = useAuth(); // 3. Get token and loading state
 
   // --- THIS IS THE "BOUNCER" LOGIC ---
   useEffect(() => {
@@ -147,14 +147,6 @@ const RegisterPage = () => {
             <BottomGradient />
           </button>
         </form>
-
-        <div className="flex items-center my-6">
-          <div className="flex-grow border-t border-neutral-700"></div>
-          <span className="flex-shrink mx-4 text-neutral-500 text-sm">OR</span>
-          <div className="flex-grow border-t border-neutral-700"></div>
-        </div>
-
-        <GoogleLoginButton />
 
         <p className="text-center text-sm text-neutral-500 mt-8">
           Already have an account?{" "}
