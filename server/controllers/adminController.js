@@ -82,17 +82,34 @@ export const getBusinessActivity = asyncHandler(async (req, res) => {
 
     // 1. Get Campaign Stats
     const campaignsCount = await Campaign.countDocuments({ businessId: id });
-    const messageStats = await Campaign.aggregate([
+
+    // Aggregating from both Campaigns (Bulk) and Messages (Direct/API)
+    const campaignStats = await Campaign.aggregate([
         { $match: { businessId: new mongoose.Types.ObjectId(id) } },
         {
             $group: {
                 _id: null,
-                totalSent: { $sum: "$sentCount" },
-                totalFailed: { $sum: "$failedCount" },
-                totalQueued: { $sum: "$totalMessages" }
+                sent: { $sum: "$sentCount" },
+                failed: { $sum: "$failedCount" },
+                queued: { $sum: "$totalMessages" }
             }
         }
     ]);
+
+    const directStats = await Message.aggregate([
+        { $match: { businessId: new mongoose.Types.ObjectId(id), campaignId: null } },
+        {
+            $group: {
+                _id: null,
+                sent: { $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] } },
+                failed: { $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] } }
+            }
+        }
+    ]);
+
+    const totalSent = (campaignStats[0]?.sent || 0) + (directStats[0]?.sent || 0);
+    const totalFailed = (campaignStats[0]?.failed || 0) + (directStats[0]?.failed || 0);
+    const totalQueued = (campaignStats[0]?.queued || 0) + (directStats[0]?.sent || 0) + (directStats[0]?.failed || 0);
 
     // 2. Get Recent Campaigns
     const recentCampaigns = await Campaign.find({ businessId: id })
@@ -112,9 +129,9 @@ export const getBusinessActivity = asyncHandler(async (req, res) => {
     res.status(200).json({
         stats: {
             campaignsCount,
-            totalSent: messageStats[0]?.totalSent || 0,
-            totalFailed: messageStats[0]?.totalFailed || 0,
-            totalQueued: messageStats[0]?.totalQueued || 0
+            totalSent,
+            totalFailed,
+            totalQueued
         },
         recentCampaigns,
         recentMessages,
@@ -128,7 +145,7 @@ export const getAdminDashboardStats = asyncHandler(async (req, res) => {
     const totalCampaigns = await Campaign.countDocuments();
     const activeSessions = await Business.countDocuments({ sessionStatus: 'connected' });
 
-    const globalMessageStats = await Campaign.aggregate([
+    const campaignKPIs = await Campaign.aggregate([
         {
             $group: {
                 _id: null,
@@ -138,11 +155,25 @@ export const getAdminDashboardStats = asyncHandler(async (req, res) => {
         }
     ]);
 
+    const directKPIs = await Message.aggregate([
+        { $match: { campaignId: null } },
+        {
+            $group: {
+                _id: null,
+                totalSent: { $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] } },
+                totalFailed: { $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] } }
+            }
+        }
+    ]);
+
+    const totalSent = (campaignKPIs[0]?.totalSent || 0) + (directKPIs[0]?.totalSent || 0);
+    const totalFailed = (campaignKPIs[0]?.totalFailed || 0) + (directKPIs[0]?.totalFailed || 0);
+
     // 2. Message Trends (Last 7 Days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const messageTrends = await Campaign.aggregate([
+    const campaignTrends = await Campaign.aggregate([
         { $match: { createdAt: { $gte: sevenDaysAgo } } },
         {
             $group: {
@@ -150,9 +181,29 @@ export const getAdminDashboardStats = asyncHandler(async (req, res) => {
                 sent: { $sum: "$sentCount" },
                 failed: { $sum: "$failedCount" }
             }
-        },
-        { $sort: { "_id": 1 } }
+        }
     ]);
+
+    const directTrends = await Message.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo }, campaignId: null } },
+        {
+            $group: {
+                _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                sent: { $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] } },
+                failed: { $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] } }
+            }
+        }
+    ]);
+
+    // Merge Trends
+    const mergedTrendsMap = {};
+    [...campaignTrends, ...directTrends].forEach(t => {
+        if (!mergedTrendsMap[t._id]) mergedTrendsMap[t._id] = { _id: t._id, sent: 0, failed: 0 };
+        mergedTrendsMap[t._id].sent += t.sent;
+        mergedTrendsMap[t._id].failed += t.failed;
+    });
+
+    const messageTrends = Object.values(mergedTrendsMap).sort((a, b) => a._id.localeCompare(b._id));
 
     // 3. User Growth (Last 7 Days)
     const userGrowth = await Business.aggregate([
@@ -177,8 +228,8 @@ export const getAdminDashboardStats = asyncHandler(async (req, res) => {
             totalUsers,
             totalCampaigns,
             activeSessions,
-            totalSent: globalMessageStats[0]?.totalSent || 0,
-            totalFailed: globalMessageStats[0]?.totalFailed || 0
+            totalSent,
+            totalFailed
         },
         trends: {
             messages: messageTrends,
