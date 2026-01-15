@@ -132,6 +132,27 @@ const OutboxPage = () => {
     }
   };
 
+  const handleDeleteCampaign = async (campaign) => {
+    if (!window.confirm(`Are you sure you want to delete campaign "${campaign.name}"? This will also remove its entire message history.`)) {
+      return;
+    }
+
+    setIsActionLoading(true);
+    const api = createAuthenticatedApi(token);
+    const toastId = toast.loading("Deleting campaign...");
+
+    try {
+      await api.delete(`/campaign/${campaign._id}`);
+      toast.success("Campaign deleted successfully!", { id: toastId });
+      fetchData();
+    } catch (err) {
+      console.error("Delete campaign failed:", err);
+      toast.error(err.response?.data?.message || "Failed to delete campaign.", { id: toastId });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
   const handleClearQueue = async () => {
     if (!window.confirm("Are you sure you want to cancel all queued messages? This will mark them as failed and clear the sending queue.")) {
       return;
@@ -273,6 +294,15 @@ const OutboxPage = () => {
                         Export
                       </button>
                     )}
+                    <button
+                      onClick={() => handleDeleteCampaign(c)}
+                      disabled={isActionLoading}
+                      className="inline-flex items-center gap-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                      title="Delete Campaign"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>

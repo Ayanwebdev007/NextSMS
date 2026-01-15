@@ -1,6 +1,7 @@
 import asyncHandler from 'express-async-handler';
 import { Campaign } from '../models/campaign.model.js';
 import { Business } from '../models/business.model.js';
+import { Message } from '../models/message.model.js';
 // The import path is correct for your project structure.
 import { messageQueue } from '../workers/queue.js';
 
@@ -112,4 +113,21 @@ export const resumeCampaign = asyncHandler(async (req, res) => {
     await campaign.save();
 
     res.json({ message: "Campaign resumed successfully." });
+});
+
+export const deleteCampaign = asyncHandler(async (req, res) => {
+    const { campaignId } = req.params;
+    const campaign = await Campaign.findOne({ _id: campaignId, businessId: req.business._id });
+
+    if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found." });
+    }
+
+    // 🗑️ CASCADE DELETE: Remove all message history associated with this campaign
+    await Message.deleteMany({ campaignId });
+
+    // 🗑️ DELETE CAMPAIGN
+    await Campaign.deleteOne({ _id: campaignId });
+
+    res.json({ message: "Campaign and its history deleted successfully." });
 });
