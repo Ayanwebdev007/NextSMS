@@ -57,10 +57,10 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
         // SCALABILITY FIX: Group jobs by businessId for fair scheduling
         await messageQueue.add(`send_${businessId.toString()}`, jobData, {
-            attempts: 3,
+            attempts: 10,           // PATIENCE: Retry 10 times (approx 10 minutes total coverage)
             backoff: {
-                type: 'exponential',
-                delay: 5000
+                type: 'fixed',
+                delay: 60000        // Wait 1 minute between retries for connection recovery
             },
             removeOnComplete: 100,  // Keep last 100 completed jobs
             removeOnFail: 200       // Keep last 200 failed jobs for debugging

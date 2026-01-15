@@ -377,8 +377,8 @@ export const startWorker = async () => {
         {
             connection,
             concurrency: 5,  // SCALABILITY: Allow 5 parallel jobs for multi-client support
-            lockDuration: 180000, // INCREASED: Allow up to 180s (Reduces lock renewal traffic)
-            stalledInterval: 60000, // INCREASED: 1m (Reduces Redis checks for stalled jobs)
+            lockDuration: 300000, // INCREASED: 5 minutes (Ensures worker doesn't lose lock during slow sends)
+            stalledInterval: 120000, // INCREASED: 2m (Avoids premature stalled checks)
             maxStalledCount: 1,
             drainDelay: 30000, // EXTREME: 30s delay when the queue is empty (Reduces background traffic)
             limiter: {

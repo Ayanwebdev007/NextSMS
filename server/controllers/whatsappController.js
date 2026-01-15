@@ -42,6 +42,25 @@ const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
 const IDLE_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
 console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
 
+/**
+ * 💓 GLOBAL HEARTBEAT SYSTEM
+ * Prevents "FORCE TAKEOVER" from ghost processes by updating the master lock
+ * every 15 seconds for all active sessions in memory.
+ */
+setInterval(async () => {
+    const activeIds = Object.keys(clients).filter(id => clients[id]?.status === 'ready');
+    if (activeIds.length === 0) return;
+
+    try {
+        await SessionStore.updateMany(
+            { businessId: { $in: activeIds }, masterId: INSTANCE_ID },
+            { $set: { lastHeartbeat: new Date() } }
+        );
+    } catch (err) {
+        console.error(`[HEARTBEAT] Failed to update locks:`, err.message);
+    }
+}, 15000); // 15s heartbeat
+
 /* =======================
    AUTH PATH
 ======================= */
