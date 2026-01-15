@@ -52,6 +52,18 @@ const ManageBusinessesPage = () => {
     fetchPlans();
   }, [fetchBusinesses, fetchPlans]);
 
+  // Handle click-away for the actions menu
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // If clicking outside the menu dropdown, close it
+      if (openMenuId && !event.target.closest('.admin-menu-dropdown')) {
+        setOpenMenuId(null);
+      }
+    };
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, [openMenuId]);
+
   const handleStatusChange = async (businessId, newStatus) => {
     const toastId = toast.loading(`Updating status...`);
     try {
@@ -197,7 +209,7 @@ const ManageBusinessesPage = () => {
                       <MoreVertical size={20} />
                     </button>
                     {openMenuId === business._id && (
-                      <div className="absolute right-6 top-12 z-50 w-48 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="admin-menu-dropdown absolute right-6 top-12 z-50 w-52 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-1 animate-in fade-in slide-in-from-top-2 duration-150">
                         <button
                           onClick={() => handleOpenModal(business)}
                           className="w-full flex items-center gap-3 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors"
