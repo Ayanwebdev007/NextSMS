@@ -115,7 +115,16 @@ const ConnectionCard = () => {
 
     useEffect(() => {
         if (token) {
-            const interval = status === 'qr_pending' ? 1500 : 3000;
+            // 🧠 SMART POLLING LOGIC
+            // - QR Pending: 1.5s (Need fast feedback for scanning)
+            // - Connected: 15s (Stable, no need to spam)
+            // - Disconnected: 5s (Idle)
+            // - Initializing: 3s
+            let interval = 3000;
+            if (status === 'qr_pending') interval = 1500;
+            else if (status === 'connected') interval = 15000;
+            else if (status === 'disconnected') interval = 5000;
+
             pollingInterval.current = setInterval(() => {
                 fetchStatus();
             }, interval);
