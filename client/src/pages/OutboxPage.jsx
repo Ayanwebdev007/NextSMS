@@ -13,6 +13,7 @@ import {
   Download,
   Play,
   Pause,
+  Trash2,
 } from "lucide-react"; // 1. Import new icons
 import { createAuthenticatedApi } from "../services/api";
 
@@ -128,6 +129,27 @@ const OutboxPage = () => {
       toast.error("Failed to generate report.", { id: toastId });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleClearQueue = async () => {
+    if (!window.confirm("Are you sure you want to cancel all queued messages? This will mark them as failed and clear the sending queue.")) {
+      return;
+    }
+
+    setIsActionLoading(true);
+    const api = createAuthenticatedApi(token);
+    const toastId = toast.loading("Clearing stuck messages...");
+
+    try {
+      const response = await api.post("/message/clear-queue");
+      toast.success(response.data.message || "Queue cleared successfully!", { id: toastId });
+      fetchData();
+    } catch (err) {
+      console.error("Clear queue failed:", err);
+      toast.error(err.response?.data?.message || "Failed to clear queue.", { id: toastId });
+    } finally {
+      setIsActionLoading(false);
     }
   };
 
@@ -354,7 +376,7 @@ const OutboxPage = () => {
         </span>
       </h1>
 
-      <div className="mb-6 border-b border-neutral-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-neutral-800">
         <nav className="-mb-px flex space-x-6">
           <button
             onClick={() => setActiveTab("campaigns")}
@@ -375,6 +397,15 @@ const OutboxPage = () => {
             Single Messages
           </button>
         </nav>
+
+        <button
+          onClick={handleClearQueue}
+          disabled={isActionLoading}
+          className="mb-2 md:mb-0 inline-flex items-center gap-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+        >
+          <Trash2 size={16} />
+          Clear Stuck Messages
+        </button>
       </div>
 
       {renderContent()}

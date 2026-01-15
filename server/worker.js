@@ -348,9 +348,10 @@ export const startWorker = async () => {
         {
             connection,
             concurrency: 5,  // SCALABILITY: Allow 5 parallel jobs for multi-client support
+            lockDuration: 120000, // INCREASED: Allow up to 120s for processing (handles delays + media)
             limiter: {
-                max: 100,      // Max 100 messages
-                duration: 3600000  // per hour per client (prevents abuse)
+                max: 5000,      // RELAXED: Max 5000 messages
+                duration: 3600000  // per hour per client
             }
         }
     );

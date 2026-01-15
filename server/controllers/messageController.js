@@ -1,6 +1,7 @@
 import asyncHandler from "express-async-handler";
 import { Business } from "../models/business.model.js";
 import { Message } from "../models/message.model.js";
+import { Campaign } from "../models/campaign.model.js";
 import { messageQueue } from "../workers/queue.js";
 
 export const sendMessage = asyncHandler(async (req, res) => {
@@ -67,4 +68,49 @@ export const sendMessage = asyncHandler(async (req, res) => {
     return res.status(202).json({
         message: "Message has been queued for sending.",
     });
+});
+
+export const clearQueuedMessages = asyncHandler(async (req, res) => {
+    const businessId = req.business._id.toString();
+
+    console.log(`[CLEANUP] Clearing queued messages and jobs for business: ${businessId}`);
+
+    try {
+        // 1. Update Database Statuses
+        const messageResult = await Message.updateMany(
+            { businessId, status: "queued" },
+            { $set: { status: "failed", errorMessage: "Forcefully cancelled by user" } }
+        );
+
+        const campaignResult = await Campaign.updateMany(
+            { businessId, status: { $in: ["processing", "pending", "scheduled"] } },
+            { $set: { status: "failed" } }
+        );
+
+        // 2. Clear BullMQ Jobs for this business
+        // We iterate through 'waiting' and 'delayed' jobs
+        const waitingJobs = await messageQueue.getJobs(['waiting', 'delayed', 'paused']);
+
+        let removedCount = 0;
+        for (const job of waitingJobs) {
+            if (job.data.businessId === businessId) {
+                await job.remove();
+                removedCount++;
+            }
+        }
+
+        console.log(`[CLEANUP] Successfully updated ${messageResult.modifiedCount} messages, ${campaignResult.modifiedCount} campaigns, and removed ${removedCount} jobs.`);
+
+        res.status(200).json({
+            message: "Queue cleared successfully.",
+            details: {
+                messagesUpdated: messageResult.modifiedCount,
+                campaignsUpdated: campaignResult.modifiedCount,
+                jobsRemoved: removedCount
+            }
+        });
+    } catch (err) {
+        console.error(`[CLEANUP] ❌ Failed to clear queue:`, err.message);
+        res.status(500).json({ message: "Failed to clear queue", error: err.message });
+    }
 });
