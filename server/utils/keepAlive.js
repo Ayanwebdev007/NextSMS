@@ -6,7 +6,8 @@ import https from 'https';
  */
 export const startKeepAlive = () => {
     const PING_INTERVAL = 10 * 60 * 1000; // 10 minutes
-    const BACKEND_URL = process.env.FRONTEND_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const BACKEND_URL = process.env.FRONTEND_URL || `http://localhost:${process.env.PORT || 3000}`;
+
 
     const ping = () => {
         const url = `${BACKEND_URL}/api/health`;

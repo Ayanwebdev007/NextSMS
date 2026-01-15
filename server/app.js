@@ -158,7 +158,10 @@ app.use((req, res, next) => {
   });
 });
 
-const PORT = 5000;
+
+const PORT = process.env.PORT || 3000;
+
+
 let server;
 
 const startServer = async (retries = 3) => {
@@ -188,7 +191,8 @@ const startServer = async (retries = 3) => {
         console.error(`\n[CRITICAL] PORT ${PORT} IS BUSY (Attempt ${4 - retries}).`);
         console.log(`[AUTO-FIX] Killing blocker and retrying in ${delay / 1000}s...`);
 
-        // Forcefully kill any process on port 5000
+        // Forcefully kill any process on the configured port
+
         exec(`fuser -k -n tcp ${PORT} || lsof -t -i:${PORT} | xargs kill -9`, (e) => {
           setTimeout(() => {
             console.log('[RETRY] Attempting server start...');
