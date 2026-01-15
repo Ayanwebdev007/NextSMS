@@ -13,6 +13,7 @@ const ConnectionCard = () => {
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [qrCodeUrl, setQrCodeUrl] = useState("");
     const [qrAttempt, setQrAttempt] = useState(0);
+    const [qrExpireAt, setQrExpireAt] = useState(0);
     const [countdown, setCountdown] = useState(10);
     const [isActionLoading, setIsActionLoading] = useState(false);
     const pollingInterval = useRef(null);
@@ -49,9 +50,11 @@ const ConnectionCard = () => {
                 const newStatus = response.data.status || "disconnected";
                 const newQr = response.data.qrCodeUrl || "";
                 const attempt = response.data.qrAttempt || 0;
+                const expireAt = response.data.qrExpireAt || 0;
 
                 if (newQr) setQrCodeUrl(newQr);
                 setQrAttempt(attempt);
+                if (expireAt) setQrExpireAt(expireAt);
 
                 setStatus((prevStatus) => {
                     if (prevStatus !== newStatus) {
@@ -112,15 +115,16 @@ const ConnectionCard = () => {
 
     useEffect(() => {
         if (token) {
+            const interval = status === 'qr_pending' ? 1500 : 3000;
             pollingInterval.current = setInterval(() => {
                 fetchStatus();
-            }, 3000);
+            }, interval);
         }
         return () => {
             stopPolling();
             if (fetchController.current) fetchController.current.abort();
         };
-    }, [fetchStatus, token, stopPolling]);
+    }, [fetchStatus, token, stopPolling, status]);
 
     // 🚀 Auto-open QR modal if scan is pending
     useEffect(() => {
@@ -131,21 +135,18 @@ const ConnectionCard = () => {
 
     // ⏱️ Countdown timer for QR regeneration
     useEffect(() => {
-        if (status === 'qr_pending' && qrAttempt > 0) {
-            setCountdown(10); // Reset to 10 seconds
+        if (status === 'qr_pending' && qrExpireAt > 0) {
+            const updateTimer = () => {
+                const remaining = Math.max(0, Math.round((qrExpireAt - Date.now()) / 1000));
+                setCountdown(remaining);
+            };
 
-            const timer = setInterval(() => {
-                setCountdown(prev => {
-                    if (prev <= 1) {
-                        return 10; // Reset when it reaches 0
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
+            updateTimer(); // Initial call
+            const timer = setInterval(updateTimer, 1000);
 
             return () => clearInterval(timer);
         }
-    }, [status, qrAttempt]);
+    }, [status, qrExpireAt]);
 
     // const handleConnect = async () => {
     //     setIsActionLoading(true);
@@ -182,6 +183,7 @@ const ConnectionCard = () => {
             const response = await api.post("/session/connect");
             setQrCodeUrl(response.data.qrCodeUrl);
             setQrAttempt(response.data.qrAttempt || 1);
+            setQrExpireAt(response.data.qrExpireAt || (Date.now() + 10000));
             setIsModalOpen(true);
             setStatus("qr_pending");
 

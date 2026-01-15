@@ -448,6 +448,9 @@ export const initializeClient = async (businessId) => {
                 if (!session.qrAttempt) session.qrAttempt = 0;
                 session.qrAttempt++;
 
+                // Track exactly when this QR will expire for frontend sync
+                session.qrExpireAt = Date.now() + 10000;
+
                 const MAX_QR_ATTEMPTS = 3;
                 console.log(`[WhatsApp] QR #${session.qrAttempt}/${MAX_QR_ATTEMPTS} generated for ${businessId}`);
 
@@ -711,7 +714,8 @@ export const connectSession = asyncHandler(async (req, res) => {
             clearInterval(timer);
             return res.json({
                 qrCodeUrl: clients[businessId].qr,
-                qrAttempt: clients[businessId].qrAttempt || 0
+                qrAttempt: clients[businessId].qrAttempt || 0,
+                qrExpireAt: clients[businessId].qrExpireAt || (Date.now() + 10000)
             });
         }
 
@@ -749,7 +753,8 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
         return res.json({
             status: "qr_pending",
             qrCodeUrl: client.qr,
-            qrAttempt: client.qrAttempt || 0
+            qrAttempt: client.qrAttempt || 0,
+            qrExpireAt: client.qrExpireAt || (Date.now() + 10000)
         });
     }
 
