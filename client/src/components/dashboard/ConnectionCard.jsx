@@ -13,6 +13,7 @@ const ConnectionCard = () => {
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [qrCodeUrl, setQrCodeUrl] = useState("");
     const [qrAttempt, setQrAttempt] = useState(0);
+    const [countdown, setCountdown] = useState(10);
     const [isActionLoading, setIsActionLoading] = useState(false);
     const pollingInterval = useRef(null);
     const connectToastId = useRef(null);
@@ -127,6 +128,24 @@ const ConnectionCard = () => {
             setIsModalOpen(true);
         }
     }, [status, qrCodeUrl, isModalOpen]);
+
+    // ⏱️ Countdown timer for QR regeneration
+    useEffect(() => {
+        if (status === 'qr_pending' && qrAttempt > 0) {
+            setCountdown(10); // Reset to 10 seconds
+
+            const timer = setInterval(() => {
+                setCountdown(prev => {
+                    if (prev <= 1) {
+                        return 10; // Reset when it reaches 0
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+
+            return () => clearInterval(timer);
+        }
+    }, [status, qrAttempt]);
 
     // const handleConnect = async () => {
     //     setIsActionLoading(true);
