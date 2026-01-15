@@ -18,6 +18,7 @@ import connectDB from './db/db.js';
 import { clients, restoreSessions } from './controllers/whatsappController.js';
 import { handleWebhook } from './controllers/paymentController.js';
 import { startKeepAlive } from './utils/keepAlive.js';
+import './utils/whatsappKeepAlive.js'; // Start daily WhatsApp session keep-alive
 
 connectDB().then(async () => {
   // await restoreSessions(); // MOVED TO START_SERVER SUCCESS

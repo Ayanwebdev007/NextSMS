@@ -2,6 +2,8 @@ import asyncHandler from 'express-async-handler';
 import { Business } from '../models/business.model.js';
 import { Message } from '../models/message.model.js';
 import { messageQueue } from '../workers/queue.js';
+import { wakeWorker } from '../utils/workerManager.js';
+import { clients, initializeClient } from './whatsappController.js';
 
 export const sendSimpleMessage = asyncHandler(async (req, res) => {
     // Support both GET (query) and POST (body)
@@ -38,6 +40,21 @@ export const sendSimpleMessage = asyncHandler(async (req, res) => {
         });
     }
 
+    // 🔥 Auto-load session if not in memory (API works after months of inactivity)
+    const client = clients[businessId.toString()];
+    if (!client || !client.sock) {
+        console.log(`[API] Session not loaded for ${businessId}. Initializing...`);
+        try {
+            await initializeClient(businessId.toString());
+        } catch (err) {
+            console.error(`[API] Failed to initialize session: ${err.message}`);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Failed to initialize WhatsApp session'
+            });
+        }
+    }
+
     // 🔴 CRITICAL FIX: Create DB record so API messages show in Dashboard History
     const messageRecord = await Message.create({
         businessId: businessId.toString(),
@@ -60,6 +77,9 @@ export const sendSimpleMessage = asyncHandler(async (req, res) => {
             removeOnComplete: 100,
             removeOnFail: 200
         });
+
+        // 🔥 Wake worker to process API job immediately
+        wakeWorker();
 
         res.status(202).json({
             status: 'success',

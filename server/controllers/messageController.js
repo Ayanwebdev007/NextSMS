@@ -3,6 +3,7 @@ import { Business } from "../models/business.model.js";
 import { Message } from "../models/message.model.js";
 import { Campaign } from "../models/campaign.model.js";
 import { messageQueue } from "../workers/queue.js";
+import { wakeWorker } from "../utils/workerManager.js";
 
 export const sendMessage = asyncHandler(async (req, res) => {
     const { recipient, text, mediaUrl, filePath } = req.body;
@@ -66,6 +67,9 @@ export const sendMessage = asyncHandler(async (req, res) => {
         });
 
         console.log(`[QUEUE] ✅ Job added successfully for ${recipient}`);
+
+        // 🔥 Wake worker to process job immediately
+        wakeWorker();
     } catch (err) {
         console.error(`[QUEUE] ❌ Failed to add job:`, err.message);
         throw err;

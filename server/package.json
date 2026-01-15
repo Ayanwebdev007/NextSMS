@@ -27,6 +27,7 @@
     "lru-cache": "^10.1.0",
     "mongoose": "^8.18.0",
     "multer": "^2.0.2",
+    "node-cron": "^3.0.3",
     "nodemon": "^3.1.10",
     "pino": "^10.1.0",
     "qrcode": "^1.5.4",

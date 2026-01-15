@@ -8,6 +8,7 @@ import { clients, restoreSessions, initializeClient } from "./controllers/whatsa
 import { Business } from "./models/business.model.js";
 import { Message } from "./models/message.model.js";
 import { Campaign } from "./models/campaign.model.js";
+import { initializeWorkerManager, wakeWorker } from "./utils/workerManager.js";
 
 import fs from "fs";
 import path from "path";
@@ -45,6 +46,9 @@ export const startWorker = async () => {
 
             const startTime = Date.now();
             console.log(`\n[WORKER] [Job:${job.id}] 📨 Start processing for ${recipient} (Business: ${businessId})`);
+
+            // 🔥 Mark worker as active (resets idle timer)
+            wakeWorker();
 
             // 📊 Log available sessions for debugging
             const activeSessions = Object.keys(clients);
@@ -368,6 +372,9 @@ export const startWorker = async () => {
             removeOnFail: { count: 100 }
         }
     );
+
+    // 🌙 Initialize sleep/wake manager (eliminates idle Redis requests)
+    initializeWorkerManager(worker);
 
     // 🕵️ WORKER HEARTBEAT (Proves worker is not hung)
     setInterval(() => {
