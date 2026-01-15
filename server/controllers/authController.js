@@ -141,10 +141,35 @@ export const handleGoogleLogin = asyncHandler(async (req, res) => {
         }
     } catch (error) {
         console.error('[AUTH] Google Login Error:', error.message);
+        console.error('[AUTH] Error Type:', error.name);
         console.error('[AUTH] Stack Trace:', error.stack);
-        res.status(500).json({
-            message: 'Error during Google authentication.',
-            error: error.message
+
+        // Provide specific error messages based on error type
+        let userMessage = 'Google Sign-In failed. Please try again.';
+        let statusCode = 500;
+
+        if (error.message.includes('Token used too late') || error.message.includes('invalid_grant')) {
+            userMessage = 'Google session expired. Please close the popup and try again.';
+            statusCode = 401;
+        } else if (error.message.includes('audience')) {
+            userMessage = 'Invalid Google Client ID configuration. Please contact support.';
+            statusCode = 500;
+            console.error('[AUTH] CRITICAL: Google Client ID mismatch!');
+        } else if (error.message.includes('fetch') || error.message.includes('network')) {
+            userMessage = 'Network error while verifying Google credentials. Please check your connection.';
+            statusCode = 503;
+        } else if (error.message.includes('duplicate key') || error.code === 11000) {
+            userMessage = 'An account with this email already exists. Please use regular login.';
+            statusCode = 409;
+        } else if (error.message.includes('verifyIdToken')) {
+            userMessage = 'Failed to verify Google credentials. Please try signing in again.';
+            statusCode = 401;
+        }
+
+        res.status(statusCode).json({
+            message: userMessage,
+            error: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });

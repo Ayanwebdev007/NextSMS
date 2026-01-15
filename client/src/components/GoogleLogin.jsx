@@ -29,13 +29,34 @@ const GoogleLoginButton = () => {
                 navigate('/dashboard');
             }
         } catch (error) {
-            const errorMessage = error.response?.data?.message || 'Google Sign-In failed.';
-            toast.error(errorMessage, { id: toastId });
+            console.error('[GOOGLE-LOGIN] Error:', error);
+            console.error('[GOOGLE-LOGIN] Response:', error.response?.data);
+
+            // Show specific error message from backend
+            const errorMessage = error.response?.data?.message || 'Google Sign-In failed. Please try again.';
+            const errorDetails = error.response?.data?.error;
+
+            toast.error(errorMessage, { id: toastId, duration: 5000 });
+
+            // Log detailed error for debugging
+            if (errorDetails) {
+                console.error('[GOOGLE-LOGIN] Server Error:', errorDetails);
+            }
         }
     };
 
-    const handleGoogleError = () => {
-        toast.error('Google authentication failed. Please try again.');
+    const handleGoogleError = (error) => {
+        console.error('[GOOGLE-LOGIN] Popup Error:', error);
+
+        if (error?.error === 'popup_closed_by_user') {
+            toast.error('Sign-in cancelled. Please complete the Google sign-in to continue.');
+        } else if (error?.error === 'access_denied') {
+            toast.error('Access denied. Please grant permission to continue with Google.');
+        } else if (error?.error === 'popup_blocked') {
+            toast.error('Popup blocked! Please allow popups for this site and try again.');
+        } else {
+            toast.error('Google authentication failed. Please try again.');
+        }
     };
 
     return (
