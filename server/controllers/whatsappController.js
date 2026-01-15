@@ -23,6 +23,7 @@ redis.on("connect", () => console.log("[REDIS] Connected for Session Caching"));
 export const clients = {}; // businessId -> { sock, qr, status }
 const initializing = new Set();
 const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
+const IDLE_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
 console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
 
 /* =======================
@@ -286,34 +287,82 @@ const acquireMasterLock = async (businessId) => {
     }
 };
 
-// Heartbeat for active sessions
+// Heartbeat for active sessions + Idle Disconnect
 setInterval(async () => {
-    const activeBusinessIds = Object.keys(clients).filter(id => clients[id].status === "ready");
-    for (const businessId of activeBusinessIds) {
-        try {
-            await SessionStore.updateOne(
-                { businessId, masterId: INSTANCE_ID },
-                { $set: { lastHeartbeat: new Date() } }
-            );
-        } catch (e) { }
+    const now = new Date();
+    const IDLE_TIMEOUT = 60 * 60 * 1000; // 60 minutes
+
+    for (const businessId in clients) {
+        const client = clients[businessId];
+
+        // 1. Heartbeat for locked sessions
+        if (client.status === "ready") {
+            try {
+                await SessionStore.updateOne(
+                    { businessId, masterId: INSTANCE_ID },
+                    { $set: { lastHeartbeat: now } }
+                );
+            } catch (e) { }
+        }
+
+        // 2. RAM OPTIMIZATION: Disconnect idle sessions
+        // If not sent a message in 1 hour and no active worker job for this client
+        const lastActivity = client.lastMessageAt || client.initAt || 0;
+        if (client.status === "ready" && (now - lastActivity) > IDLE_TIMEOUT) {
+            console.log(`[IDLE] 💤 Session ${businessId} inactive for 60m. Offloading from RAM...`);
+            if (client.sock) {
+                client.sock.manualCleanup = true;
+                try { client.sock.end(); } catch (e) { }
+            }
+            delete clients[businessId];
+            initializing.delete(businessId);
+        }
     }
-}, 10000); // 10s heartbeat
+}, 30000); // Check every 30s
 
 /* =======================
    RESTORE SESSIONS
 ======================= */
 export const restoreSessions = async () => {
-    // console.log("[SESSION RESTORE] Checking saved Baileys sessions in DB");
+    console.log("[SESSION RESTORE] Checking saved Baileys sessions in DB...");
 
     // Fetch all active sessions from DB
     const storedSessions = await SessionStore.find({}, '_id businessId');
+    console.log(`[SESSION RESTORE] Found ${storedSessions.length} sessions to restore. Staggering with 2s delay.`);
 
-    for (const session of storedSessions) {
+    for (let i = 0; i < storedSessions.length; i++) {
+        const session = storedSessions[i];
         const businessId = session.businessId.toString();
-        // cleanBrokenSession(businessId); // Usually handled by connection logic
+
+        // STAGGERED RESTORE: Prevent CPU/RAM spike by waiting between each init
+        if (i > 0) {
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
         initializeClient(businessId);
     }
 };
+
+// --- RAM OPTIMIZATION: Idle Cleanup Loop ---
+// Periodically checks for sessions that haven't sent a message and removes them from RAM.
+setInterval(() => {
+    const now = Date.now();
+    const activeIds = Object.keys(clients);
+
+    activeIds.forEach(businessId => {
+        const client = clients[businessId];
+        // Only unload if it's been idle for 60m AND we are not in the middle of a task
+        if (client && client.lastActivity && (now - client.lastActivity) > IDLE_TIMEOUT) {
+            console.log(`[RAM-CLEANUP] Unloading idle session ${businessId} (Idle for ${Math.floor((now - client.lastActivity) / 60000)}m)`);
+
+            if (client.sock) {
+                client.sock.manualCleanup = true;
+                try { client.sock.end(); } catch (e) { }
+            }
+            delete clients[businessId];
+        }
+    });
+}, 5 * 60 * 1000); // Check every 5 minutes
 
 /* =======================
    INITIALIZE CLIENT
@@ -376,7 +425,10 @@ export const initializeClient = async (businessId) => {
             sock,
             qr: null,
             status: "initializing",
-            reconnectAttempts: prevAttempts
+            reconnectAttempts: prevAttempts,
+            lastActivity: Date.now(), // Initialize activity timestamp
+            initAt: new Date(),
+            lastMessageAt: new Date()
         };
         clients[businessId] = session;
         // initializing.delete(businessId); // This was moved to connection.update and catch block
@@ -498,6 +550,12 @@ export const initializeClient = async (businessId) => {
         /* -------- MESSAGES (Auto-Responder) -------- */
         sock.ev.on("messages.upsert", async ({ messages, type }) => {
             if (type !== "notify") return;
+
+            // 📊 Update activity for idle timeout
+            if (clients[businessId]) {
+                clients[businessId].lastMessageAt = new Date();
+            }
+
             for (const msg of messages) {
                 if (!msg.message || msg.key.fromMe) continue;
                 const buttonResponse = msg.message.buttonsResponseMessage;

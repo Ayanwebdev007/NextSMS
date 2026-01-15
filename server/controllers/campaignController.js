@@ -13,9 +13,15 @@ export const startCampaign = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Campaign name, message, and a list of recipients are required.' });
     }
 
-    const currentBusiness = await Business.findById(businessId);
-    if (!currentBusiness || currentBusiness.credits < recipients.length) {
-        return res.status(403).json({ message: `Insufficient credits. You need ${recipients.length} credits but have ${currentBusiness.credits}.` });
+    // ATOMIC RESERVATION: Deduct total credits immediately to prevent concurrent spending loopholes
+    const currentBusiness = await Business.findOneAndUpdate(
+        { _id: businessId, credits: { $gte: recipients.length } },
+        { $inc: { credits: -recipients.length } },
+        { new: true }
+    );
+
+    if (!currentBusiness) {
+        return res.status(403).json({ message: `Insufficient credits. You need ${recipients.length} credits but have less.` });
     }
 
     const campaignStatus = delay > 0 ? 'scheduled' : 'processing';

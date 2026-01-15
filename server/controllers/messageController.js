@@ -14,8 +14,14 @@ export const sendMessage = asyncHandler(async (req, res) => {
         });
     }
 
-    const currentBusiness = await Business.findById(businessId);
-    if (!currentBusiness || currentBusiness.credits <= 0) {
+    // ATOMIC RESERVATION: Deduct 1 credit immediately to prevent concurrent spending loopholes
+    const currentBusiness = await Business.findOneAndUpdate(
+        { _id: businessId, credits: { $gt: 0 } },
+        { $inc: { credits: -1 } },
+        { new: true }
+    );
+
+    if (!currentBusiness) {
         return res.status(403).json({
             message: "Insufficient credits or business not found.",
         });

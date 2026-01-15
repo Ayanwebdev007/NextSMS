@@ -279,8 +279,12 @@ export const startWorker = async () => {
 
                 console.log(`[WORKER] [Job:${job.id}] ✅ Message sent to ${recipient} in ${Date.now() - startTime}ms`);
 
-                // 💳 Update credits & Campaign counts
-                await Business.findByIdAndUpdate(businessId, { $inc: { credits: -1 } });
+                // Track activity for IDLE CLEANUP
+                if (clients[businessId]) {
+                    clients[businessId].lastActivity = Date.now();
+                }
+
+                // 💳 Campaign counts (Credits already deducted at reservation time)
                 if (campaignId) {
                     await Campaign.findByIdAndUpdate(campaignId, { $inc: { sentCount: 1 } });
                 }
@@ -319,6 +323,9 @@ export const startWorker = async () => {
                     await Campaign.findByIdAndUpdate(campaignId, { $inc: { failedCount: 1 } });
                 }
 
+                // 💳 REFUND: Return credit on permanent failure
+                await Business.findByIdAndUpdate(businessId, { $inc: { credits: 1 } });
+
                 if (messageId) {
                     await Message.findByIdAndUpdate(messageId, {
                         status: "failed",
@@ -350,8 +357,9 @@ export const startWorker = async () => {
             concurrency: 5,  // SCALABILITY: Allow 5 parallel jobs for multi-client support
             lockDuration: 120000, // INCREASED: Allow up to 120s for processing (handles delays + media)
             limiter: {
-                max: 5000,      // RELAXED: Max 5000 messages
-                duration: 3600000  // per hour per client
+                max: 50,      // Max 50 messages per client
+                duration: 60000,  // per minute
+                groupKey: 'businessId' // SCALABILITY: Limits apply per business, not globally
             }
         }
     );
