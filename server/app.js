@@ -187,7 +187,8 @@ const startServer = async (retries = 3) => {
 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        const delay = Math.min(retries * 5000, 30000); // Max 30s delay
+        const delay = Math.min(retries * 10000, 30000); // Wait longer (10s+) to let port clear
+
         console.error(`\n[CRITICAL] PORT ${PORT} IS BUSY (Attempt ${4 - retries}).`);
         console.log(`[AUTO-FIX] Killing blocker and retrying in ${delay / 1000}s...`);
 
