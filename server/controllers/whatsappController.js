@@ -91,13 +91,7 @@ const useMongoDBAuthState = async (businessId) => {
                 { upsert: true, new: true }
             );
 
-            // 🚀 EXTREME REDIS OPTIMIZATION: ONLY sync 'creds' to Redis.
-            // Creds are small and essential for multi-instance auth.
-            // Other keys (pre-keys, sessions) are high-frequency and will stay in RAM/MongoDB.
-            const redisKey = `auth:${businessId}:creds`;
-            await redis.set(redisKey, JSON.stringify(creds, BufferJSON.replacer), "EX", 86400 * 7).catch(() => { });
-
-            console.log(`[AUTH] [REDIS-SAVE] Critical credentials saved for ${businessId}`);
+            console.log(`[AUTH] Credentials saved for ${businessId}`);
             return result;
         } catch (err) {
             console.error(`[AUTH] Failed to save credentials for ${businessId}:`, err.message);
@@ -127,33 +121,8 @@ const useMongoDBAuthState = async (businessId) => {
 
                     if (missingIds.length === 0) return data;
 
-                    // 🚀 EXTREME OPTIMIZATION: Non-critical keys are NOT fetched from Redis anymore.
-                    // We only use Redis for 'creds' (which are handled by useMongoDBAuthState directly).
-                    // This eliminates thousands of Redis GET requests.
-                    const isCreds = type === 'creds';
-
-                    // 2. Try Redis (Only for critical creds if needed, though they are usually in memory/DB)
-                    const idsToFetchFromDB = [];
-                    for (const id of missingIds) {
-                        if (isCreds) {
-                            const redisKey = `auth:${businessId}:${type}:${id}`;
-                            try {
-                                const cached = await redis.get(redisKey);
-                                if (cached) {
-                                    const val = JSON.parse(cached, BufferJSON.reviver);
-                                    data[id] = val;
-                                    keyCache[businessId][type][id] = val;
-                                } else {
-                                    idsToFetchFromDB.push(id);
-                                }
-                            } catch (e) {
-                                idsToFetchFromDB.push(id);
-                            }
-                        } else {
-                            // Non-critical keys always fall back to DB (or just stay missing if new)
-                            idsToFetchFromDB.push(id);
-                        }
-                    }
+                    // 🚀 FALLBACK: All keys now fetch from MongoDB (Redis sync removed to save costs)
+                    const idsToFetchFromDB = [...missingIds];
 
                     // 3. Fallback to MongoDB for missing keys
                     if (idsToFetchFromDB.length > 0) {
@@ -164,12 +133,6 @@ const useMongoDBAuthState = async (businessId) => {
                                 if (val) {
                                     data[id] = JSON.parse(JSON.stringify(val), BufferJSON.reviver);
                                     keyCache[businessId][type][id] = data[id];
-
-                                    // 🚀 ONLY back-fill Redis for creds
-                                    if (isCreds) {
-                                        const redisKey = `auth:${businessId}:${type}:${id}`;
-                                        redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7).catch(() => { });
-                                    }
                                 }
                             }
                         }
@@ -195,18 +158,9 @@ const useMongoDBAuthState = async (businessId) => {
                                 if (val) {
                                     const serialized = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
                                     keyCache[businessId][type][id] = val;
-
-                                    // 🚀 EXTREME OPTIMIZATION: ONLY write 'creds' to Redis.
-                                    // Everything else (pre-keys, sessions) only goes to MongoDB.
-                                    if (isCreds) {
-                                        redis.set(redisKey, JSON.stringify(val, BufferJSON.replacer), "EX", 86400 * 7).catch(() => { });
-                                    }
                                     updates[keyPath] = serialized;
                                 } else {
                                     delete keyCache[businessId][type][id];
-                                    if (isCreds) {
-                                        redis.del(redisKey).catch(() => { });
-                                    }
                                     deletions[keyPath] = 1;
                                 }
                             }
