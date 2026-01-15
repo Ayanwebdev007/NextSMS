@@ -9,6 +9,10 @@ const sessionSchema = new mongoose.Schema(
             ref: 'Business',
             unique: true, // One session per business
         },
+        businessEmail: {
+            type: String, // For human readability in DB
+            default: null
+        },
         // We store the entire JSON dump of the creds/keys here.
         // Baileys 'useMultiFileAuthState' data will be adapted to fit here.
         data: {

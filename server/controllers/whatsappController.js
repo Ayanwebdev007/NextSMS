@@ -222,8 +222,10 @@ const acquireMasterLock = async (businessId) => {
         // 2. If it doesn't exist, try to create it (handles E11000 race condition)
         if (!session) {
             try {
+                const business = await Business.findById(businessId).select('email');
                 session = await SessionStore.create({
                     businessId,
+                    businessEmail: business?.email || 'unknown',
                     masterId: INSTANCE_ID,
                     lastHeartbeat: now
                 });
@@ -256,6 +258,13 @@ const acquireMasterLock = async (businessId) => {
         );
 
         if (result?.masterId === INSTANCE_ID) {
+            // Self-healing: Populate email if missing
+            if (result && !result.businessEmail) {
+                const business = await Business.findById(businessId).select('email');
+                if (business) {
+                    await SessionStore.updateOne({ _id: result._id }, { $set: { businessEmail: business.email } });
+                }
+            }
             return true;
         }
 
