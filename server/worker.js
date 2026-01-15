@@ -290,7 +290,16 @@ export const startWorker = async () => {
 
                 // 💳 Campaign counts (Credits already deducted at reservation time)
                 if (campaignId) {
-                    await Campaign.findByIdAndUpdate(campaignId, { $inc: { sentCount: 1 } });
+                    const campaign = await Campaign.findByIdAndUpdate(
+                        campaignId,
+                        { $inc: { sentCount: 1 } },
+                        { new: true }
+                    );
+
+                    if (campaign && (campaign.sentCount + campaign.failedCount >= campaign.totalMessages)) {
+                        await Campaign.updateOne({ _id: campaignId }, { status: 'completed' });
+                        console.log(`[WORKER] Campaign ${campaignId} marked as COMPLETED.`);
+                    }
                 }
 
                 // Update or Create history record (Normal Success)
@@ -324,7 +333,16 @@ export const startWorker = async () => {
                 console.error(`[WORKER] [Job:${job.id}] PERMANENT ERROR:`, error.message);
 
                 if (campaignId) {
-                    await Campaign.findByIdAndUpdate(campaignId, { $inc: { failedCount: 1 } });
+                    const campaign = await Campaign.findByIdAndUpdate(
+                        campaignId,
+                        { $inc: { failedCount: 1 } },
+                        { new: true }
+                    );
+
+                    if (campaign && (campaign.sentCount + campaign.failedCount >= campaign.totalMessages)) {
+                        await Campaign.updateOne({ _id: campaignId }, { status: 'completed' });
+                        console.log(`[WORKER] Campaign ${campaignId} marked as COMPLETED (with errors).`);
+                    }
                 }
 
                 // 💳 REFUND: Return credit on permanent failure
