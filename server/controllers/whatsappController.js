@@ -475,14 +475,82 @@ export const initializeClient = async (businessId) => {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
-                console.log(`[WhatsApp] New QR generated for ${businessId}`);
+                // Initialize QR attempt counter if not exists
+                if (!session.qrAttempt) session.qrAttempt = 0;
+                session.qrAttempt++;
+
+                const MAX_QR_ATTEMPTS = 3;
+                console.log(`[WhatsApp] QR #${session.qrAttempt}/${MAX_QR_ATTEMPTS} generated for ${businessId}`);
+
                 session.qr = await qrcode.toDataURL(qr);
                 session.status = "qr_pending";
-                await Business.findByIdAndUpdate(businessId, { sessionStatus: "qr_pending" });
+
+                await Business.findByIdAndUpdate(businessId, {
+                    sessionStatus: "qr_pending",
+                    qrAttempt: session.qrAttempt
+                });
+
+                // Clear previous QR timer if exists
+                if (session.qrTimer) {
+                    clearTimeout(session.qrTimer);
+                    session.qrTimer = null;
+                }
+
+                // If max attempts reached, set final timeout then stop
+                if (session.qrAttempt >= MAX_QR_ATTEMPTS) {
+                    console.log(`[WhatsApp] Max QR attempts (${MAX_QR_ATTEMPTS}) reached for ${businessId}. Will expire in 10s.`);
+                    session.qrTimer = setTimeout(async () => {
+                        if (session.status === 'qr_pending') {
+                            console.log(`[WhatsApp] QR expired for ${businessId} after ${MAX_QR_ATTEMPTS} attempts`);
+                            session.status = 'qr_expired';
+                            session.qr = null;
+                            session.qrAttempt = 0;
+
+                            await Business.findByIdAndUpdate(businessId, {
+                                sessionStatus: 'qr_expired',
+                                qrAttempt: 0
+                            });
+
+                            // Clean up socket
+                            try {
+                                sock.manualCleanup = true;
+                                sock.end();
+                            } catch (e) { }
+
+                            delete clients[businessId];
+                            initializing.delete(businessId);
+                        }
+                    }, 10000); // 10 second grace period for final QR
+                    return;
+                }
+
+                // Set 10-second timer to force new QR generation
+                session.qrTimer = setTimeout(() => {
+                    if (session.status === 'qr_pending') {
+                        console.log(`[WhatsApp] QR timeout (10s), forcing regeneration for ${businessId}`);
+                        // Force WhatsApp SDK to generate new QR by closing and reopening connection
+                        try {
+                            if (sock.ws) {
+                                sock.ws.close();
+                            }
+                        } catch (e) {
+                            console.error(`[WhatsApp] Error forcing QR regeneration: ${e.message}`);
+                        }
+                    }
+                }, 10000); // 10 seconds
             }
 
             if (connection === "open") {
                 console.log(`[WhatsApp] Connection opened for ${businessId}`);
+
+                // Clear QR timer on successful connection
+                if (session.qrTimer) {
+                    clearTimeout(session.qrTimer);
+                    session.qrTimer = null;
+                }
+
+                // Reset QR attempt counter
+                session.qrAttempt = 0;
 
                 // Clear any existing stability timer
                 if (session.stableTimer) clearTimeout(session.stableTimer);
@@ -491,7 +559,10 @@ export const initializeClient = async (businessId) => {
                 session.qr = null;
                 initializing.delete(businessId); // Clear initializing set on successful connection
 
-                await Business.findByIdAndUpdate(businessId, { sessionStatus: "connected" });
+                await Business.findByIdAndUpdate(businessId, {
+                    sessionStatus: "connected",
+                    qrAttempt: 0
+                });
 
                 // Stable Reset: Only clear attempts if we stay connected for 5s (Faster stability check)
                 session.stableTimer = setTimeout(async () => {
@@ -516,6 +587,12 @@ export const initializeClient = async (businessId) => {
 
             if (connection === "close") {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
+
+                // Clear QR timer if connection closed
+                if (session.qrTimer) {
+                    clearTimeout(session.qrTimer);
+                    session.qrTimer = null;
+                }
 
                 // 1. If it was an intentional cleanup, don't reconnect
                 if (sock.manualCleanup) {

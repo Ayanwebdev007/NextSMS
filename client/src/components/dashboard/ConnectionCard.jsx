@@ -12,6 +12,7 @@ const ConnectionCard = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [qrCodeUrl, setQrCodeUrl] = useState("");
+    const [qrAttempt, setQrAttempt] = useState(0);
     const [isActionLoading, setIsActionLoading] = useState(false);
     const pollingInterval = useRef(null);
     const connectToastId = useRef(null);
@@ -46,8 +47,10 @@ const ConnectionCard = () => {
                 });
                 const newStatus = response.data.status || "disconnected";
                 const newQr = response.data.qrCodeUrl || "";
+                const attempt = response.data.qrAttempt || 0;
 
                 if (newQr) setQrCodeUrl(newQr);
+                setQrAttempt(attempt);
 
                 setStatus((prevStatus) => {
                     if (prevStatus !== newStatus) {
@@ -73,6 +76,12 @@ const ConnectionCard = () => {
                         ) {
                             stopPolling();
                             setIsModalOpen(false);
+                        }
+                        if (newStatus === "qr_expired") {
+                            toast.error('QR code expired after 3 attempts. Click Connect to try again.', { duration: 6000 });
+                            stopPolling();
+                            setIsModalOpen(false);
+                            return "disconnected"; // Set to disconnected so user can retry
                         }
                         return newStatus;
                     }
@@ -321,8 +330,22 @@ const ConnectionCard = () => {
                 }}
             >
                 {qrCodeUrl ? (
-                    <div className="bg-white p-4 rounded-lg">
-                        <img src={qrCodeUrl} alt="WhatsApp QR Code" />
+                    <div>
+                        <div className="bg-white p-4 rounded-lg">
+                            <img src={qrCodeUrl} alt="WhatsApp QR Code" />
+                        </div>
+                        {qrAttempt > 0 && (
+                            <div className="mt-4 text-center">
+                                <p className="text-sm text-cyan-400 font-semibold">
+                                    Attempt {qrAttempt} of 3
+                                </p>
+                                <p className="text-xs text-neutral-500 mt-1">
+                                    {qrAttempt < 3
+                                        ? "New QR will generate in 10 seconds if not scanned"
+                                        : "Last attempt - scan now or it will expire"}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="flex justify-center items-center h-48">
