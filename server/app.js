@@ -173,17 +173,16 @@ const startServer = async (retries = 3) => {
       console.log(`\n💎 [NEXTSMS-STABLE] API IS LIVE ON PORT ${PORT}`);
       console.log(`💎 [NEXTSMS-STABLE] Mode: ${process.env.NODE_ENV || 'development'}\n`);
 
-      // --- STABILITY FIX: LAZY LOADING ---
-      // We do NOT load all sessions on startup. This prevents 502 OOM crashes.
-      // Sessions now load automatically when the user visits the dashboard.
-      console.log('💎 [NEXTSMS-STABLE] Lazy Loading active. Startup RAM usage: ~55MB.');
-      /*
+      // --- STABILITY FIX: AUTO-RESTORE ---
+      // We automatically reload previously connected sessions in the background.
+      // They are staggered to prevent CPU spikes.
       try {
         const { restoreSessions } = await import('./controllers/whatsappController.js');
         await restoreSessions();
-      } catch (e) { console.error('Failed to restore sessions:', e); }
-      */
-      console.log('💎 [LAZY-LOAD] System initialized. Sessions will load on user activity.');
+      } catch (e) {
+        console.error('[STARTUP] Failed to trigger session restore:', e);
+      }
+      console.log('💎 [SYSTEM] Background Auto-Restore active.');
     });
 
     server.on('error', (err) => {
@@ -225,8 +224,8 @@ app.use((err, req, res, next) => {
 });
 
 // --- Graceful shutdown --- //
-process.on('SIGINT', async () => {
-  console.log('\nSIGINT signal received: Gracefully closing server...');
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} signal received: Gracefully closing server...`);
   server.close(async () => {
     console.log('HTTP server closed.');
 
@@ -247,4 +246,7 @@ process.on('SIGINT', async () => {
     console.log('All WhatsApp sessions preserved. Ready for restart.');
     process.exit(0);
   });
-});
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

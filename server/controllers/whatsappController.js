@@ -369,11 +369,24 @@ setInterval(async () => {
 /* =======================
    RESTORE SESSIONS
 ======================= */
-// --- SCALABILITY: Lazy Restore ---
-// We no longer load all sessions at startup (to save RAM/CPU).
-// Sessions will "Wake Up" on-demand when someone uses the API or Dashboard.
+// --- SCALABILITY: Staggered Auto-Restore ---
+// We load all previously connected sessions automatically, 
+// but we stagger them to avoid CPU/RAM spikes.
 export const restoreSessions = async () => {
-    console.log("[LAZY-LOAD] Startup complete. Sessions will load on-demand.");
+    try {
+        const connectedBusinesses = await Business.find({ sessionStatus: 'connected' });
+        console.log(`[STARTUP] Found ${connectedBusinesses.length} sessions to restore auto-reconnect.`);
+
+        // Use a staggered loop to avoid hitting Baileys with 100+ requests at once
+        connectedBusinesses.forEach((biz, index) => {
+            setTimeout(() => {
+                console.log(`[AUTO-RESTORE] Waking up session for ${biz.email || biz._id}...`);
+                initializeClient(biz._id.toString());
+            }, index * 3000); // 3 seconds apart
+        });
+    } catch (err) {
+        console.error('[STARTUP] Failed to restore sessions:', err.message);
+    }
 };
 
 // --- RAM OPTIMIZATION: Idle Cleanup Loop ---
