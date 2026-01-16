@@ -409,6 +409,15 @@ export const initializeClient = async (businessId) => {
     }
 
     initializing.add(businessId);
+
+    // 🛡️ EMERGENCY TIMEOUT: If init hangs for >60s, clear the guard
+    setTimeout(() => {
+        if (initializing.has(businessId)) {
+            console.warn(`[WhatsApp] Init safety timeout reached for ${businessId}. Clearing guard.`);
+            initializing.delete(businessId);
+        }
+    }, 60000);
+
     console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
 
     // Corrected Guard: If already connecting or active, don't start a second one
@@ -655,11 +664,16 @@ export const initializeClient = async (businessId) => {
                     initializing.delete(businessId);
                     await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
-                    await Activity.create({
-                        businessId,
-                        event: 'auth_failure',
-                        details: 'Session logged out from phone.'
-                    });
+                    // 🛡️ THROTTLE: Only log auth failure activity once every 10 mins
+                    const tenMins = 10 * 60 * 1000;
+                    if (!session.lastErrorLog || (Date.now() - session.lastErrorLog) > tenMins) {
+                        session.lastErrorLog = Date.now();
+                        await Activity.create({
+                            businessId,
+                            event: 'auth_failure',
+                            details: 'Session logged out from phone or credentials expired.'
+                        });
+                    }
                 }
             }
         });
