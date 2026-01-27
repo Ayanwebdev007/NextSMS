@@ -97,9 +97,10 @@ export const startWorker = async () => {
                 if (!clientData || clientData.status !== "ready") {
                     console.log(`[WORKER] [Job:${job.id}] Session not ready (Status: ${clientData?.status || 'missing'}). Waiting...`);
 
-                    // PATIENT WAIT: Wait up to 30 seconds for session to stabilize/reconnect
-                    for (let i = 0; i < 30; i++) {
-                        await new Promise(r => setTimeout(r, 1000));
+                    // OPTIMIZED WAIT: Wait up to 5 seconds (was 30s) for session to stabilize
+                    // If it takes longer, we should probably trigger a reload or retry later
+                    for (let i = 0; i < 10; i++) {
+                        await new Promise(r => setTimeout(r, 500)); // 500ms * 10 = 5s
                         clientData = clients[businessId];
                         if (clientData?.status === "ready") break;
                     }
@@ -118,7 +119,10 @@ export const startWorker = async () => {
 
                             // Active Self-Healing
                             try {
+                                const healStart = Date.now();
                                 await initializeClient(businessId);
+                                console.log(`[WORKER] [Job:${job.id}] InitializeClient took ${Date.now() - healStart}ms`);
+
                                 // Wait 5s for it to connect
                                 await new Promise(r => setTimeout(r, 5000));
                                 clientData = clients[businessId];
@@ -204,15 +208,69 @@ export const startWorker = async () => {
 
                 if (resolvedPath && fs.existsSync(resolvedPath)) {
                     console.log(`[WORKER] [Job:${job.id}] Sending media file: ${resolvedPath}`);
-                    messagePayload = {
-                        image: fs.readFileSync(resolvedPath),
-                        caption: processedText,
-                    };
+                    const ext = path.extname(resolvedPath).toLowerCase();
+
+                    if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+                        messagePayload = {
+                            image: fs.readFileSync(resolvedPath),
+                            caption: processedText,
+                        };
+                    } else if (['.mp4', '.avi', '.mov', '.mkv'].includes(ext)) {
+                        messagePayload = {
+                            video: fs.readFileSync(resolvedPath),
+                            caption: processedText,
+                        };
+                    } else if (['.mp3', '.wav', '.ogg'].includes(ext)) {
+                        messagePayload = {
+                            audio: fs.readFileSync(resolvedPath),
+                            mimetype: 'audio/mp4', // Baileys often prefers this for audio
+                            ptt: false // Start as normal audio
+                        };
+                    } else {
+                        // Default to document for PDF, DOC, XLS, etc.
+                        let mime = 'application/octet-stream';
+                        if (ext === '.pdf') mime = 'application/pdf';
+                        if (ext === '.doc') mime = 'application/msword';
+                        if (ext === '.docx') mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                        if (ext === '.xls') mime = 'application/vnd.ms-excel';
+                        if (ext === '.xlsx') mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+                        if (ext === '.txt') mime = 'text/plain';
+
+                        messagePayload = {
+                            document: fs.readFileSync(resolvedPath),
+                            mimetype: mime,
+                            fileName: path.basename(resolvedPath),
+                            caption: processedText
+                        };
+                    }
                 } else if (mediaUrl) {
-                    messagePayload = {
-                        image: { url: mediaUrl },
-                        caption: processedText,
-                    };
+                    const ext = path.extname(mediaUrl).split('?')[0].toLowerCase(); // Basic URL ext check
+
+                    if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+                        messagePayload = {
+                            image: { url: mediaUrl },
+                            caption: processedText,
+                        };
+                    } else if (['.mp4', '.avi', '.mov'].includes(ext)) {
+                        messagePayload = {
+                            video: { url: mediaUrl },
+                            caption: processedText,
+                        };
+                    } else {
+                        // For URLs, if we can't be sure, defaulting to document is safer if it's not an obvious image
+                        // But if ext is missing, we might have issues.
+                        let mime = 'application/octet-stream';
+                        if (ext === '.pdf') mime = 'application/pdf';
+                        if (ext === '.docx') mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                        if (ext === '.xlsx') mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+                        messagePayload = {
+                            document: { url: mediaUrl },
+                            mimetype: mime,
+                            fileName: path.basename(mediaUrl).split('?')[0] || 'file',
+                            caption: processedText,
+                        };
+                    }
                 }
 
                 // Add buttons to payload if any (Standard buttonsMessage format)
@@ -232,9 +290,11 @@ export const startWorker = async () => {
                 console.log(`[WORKER] [Job:${job.id}] Dispatching message to ${jid} (Auto-formatted)...`);
 
                 try {
+                    const sendStart = Date.now();
                     const result = await sock.sendMessage(jid, messagePayload);
+                    console.log(`[WORKER] [Job:${job.id}] 🟢 WhatsApp ACK: Message accepted by server for ${jid} (Time: ${Date.now() - sendStart}ms)`);
                     if (result) {
-                        console.log(`[WORKER] [Job:${job.id}] 🟢 WhatsApp ACK: Message accepted by server for ${jid}`);
+                        // Success
                     }
                 } catch (sendError) {
                     // DETAILED ERROR LOGGING
@@ -388,7 +448,7 @@ export const startWorker = async () => {
             lockDuration: 300000, // INCREASED: 5 minutes (Ensures worker doesn't lose lock during slow sends)
             stalledInterval: 120000, // INCREASED: 2m (Avoids premature stalled checks)
             maxStalledCount: 1,
-            drainDelay: 30000, // EXTREME: 30s delay when the queue is empty (Reduces background traffic)
+            drainDelay: 1000, // REDUCED: 1s (was 30s) - Checks for jobs more frequently when empty
             limiter: {
                 max: 50,      // Max 50 messages per client
                 duration: 60000,  // per minute
