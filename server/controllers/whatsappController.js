@@ -32,29 +32,22 @@ const originalConsoleWarn = console.warn;
 const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError', 'failed to decrypt', 'SessionEntry', 'registrationId', 'indexInfo'];
 
 console.error = (...args) => {
-    // 🛡️ ULTRA-SILENCE: Never stringify large objects for logs - prevents event-loop freeze
-    const raw = args.map(arg => {
+    // 🛡️ ULTRA-FAST SILENCE: Never stringify. Just check basic patterns.
+    // This prevents the event loop from freezing on giant objects.
+    for (const arg of args) {
+        if (typeof arg === 'string' && SILENCE_PATTERNS.some(p => arg.includes(p))) return;
         if (typeof arg === 'object' && arg !== null) {
-            const str = JSON.stringify(arg);
-            return str.length > 500 ? "[LARGE_OBJECT_SILENCED]" : str;
+            if (arg.isSessionRecordError || arg.name === 'PreKeyError' || arg.registrationId || arg.remoteJid) return;
         }
-        return String(arg);
-    }).join(' ');
-
-    if (SILENCE_PATTERNS.some(p => raw.includes(p))) return;
+    }
     originalConsoleError.apply(console, args);
 };
 
 console.warn = (...args) => {
-    const raw = args.map(arg => {
-        if (typeof arg === 'object' && arg !== null) {
-            const str = JSON.stringify(arg);
-            return str.length > 500 ? "[LARGE_OBJECT_SILENCED]" : str;
-        }
-        return String(arg);
-    }).join(' ');
-
-    if (SILENCE_PATTERNS.some(p => raw.includes(p))) return;
+    for (const arg of args) {
+        if (typeof arg === 'string' && SILENCE_PATTERNS.some(p => arg.includes(p))) return;
+        if (typeof arg === 'object' && arg !== null && (arg.registrationId || arg.remoteJid)) return;
+    }
     originalConsoleWarn.apply(console, args);
 };
 
@@ -123,7 +116,26 @@ const useMongoDBAuthState = async (businessId) => {
     if (existingSession && existingSession.data && existingSession.data.creds) {
         // Deserialize existing session from DB
         console.log(`[AUTH] Restoring session from DB for ${businessId}`);
-        creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
+
+        // 🛡️ EMERGENCY REPAIR: If this is the specific "stalled" email, surgically scrub the data bloat
+        if (existingSession.businessEmail === "iconcomputer741126@gmail.com") {
+            const dataSizeMB = JSON.stringify(existingSession.data).length / (1024 * 1024);
+            if (dataSizeMB > 1) {
+                console.warn(`[REPAIR] 🛠️  Business ${businessId} has massive data (${dataSizeMB.toFixed(2)}MB). Executing Surgical Scrub...`);
+                // WIPE everything except creds. This preserves the login but kills the 10MB of history garbage.
+                await SessionStore.updateOne(
+                    { businessId },
+                    { $set: { "data.pre-key": {}, "data.session": {}, "data.sender-key": {}, "data.app-state-sync-key-share": {} } }
+                );
+                // Force a fresh read of the cleaned document
+                const cleaned = await SessionStore.findOne({ businessId });
+                creds = JSON.parse(JSON.stringify(cleaned.data.creds), BufferJSON.reviver);
+            } else {
+                creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
+            }
+        } else {
+            creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
+        }
     } else {
         // Initialize fresh credentials (no DB session exists)
         console.log(`[AUTH] Initializing fresh credentials for ${businessId}`);
