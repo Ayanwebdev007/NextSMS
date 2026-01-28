@@ -64,7 +64,7 @@ setInterval(async () => {
     } catch (err) {
         console.error(`[HEARTBEAT] Failed to update locks:`, err.message);
     }
-}, 10000); // 10s heartbeat (Faster for reliability, SYNC with 90s timeout)
+}, 5000); // 5s heartbeat (FAST for VPS stability)
 
 /* =======================
    AUTH PATH
@@ -360,16 +360,23 @@ const acquireMasterLock = async (businessId) => {
                     console.error(`[LOCK] Failed to kill zombie: ${kErr.message}`);
                 }
 
-                await SessionStore.findOneAndUpdate(
+                // 🛡️ PATIENCE GUARD: Force a 10s wait after killing the same-host process
+                // This gives Baileys and the VPS time to release the session keys/ports.
+                // Prevents "Double-Active" sockets on the same instance.
+                console.warn(`[LOCK] Waiting 10s for VPC to release ghost process...`);
+                await new Promise(r => setTimeout(r, 10000));
+
+                const finalResult = await SessionStore.findOneAndUpdate(
                     { businessId },
                     {
                         $set: {
                             masterId: INSTANCE_ID,
                             lastHeartbeat: now
                         }
-                    }
+                    },
+                    { new: true }
                 );
-                return true; // We took it forcefully
+                return finalResult?.masterId === INSTANCE_ID;
             }
         }
 
@@ -517,19 +524,21 @@ export const initializeClient = async (businessId) => {
 
         const sock = makeWASocket({
             auth: state,
-            // 🛡️ NOISE CANCELING LOGGER: Suppress the constant "Bad MAC" / Decryption errors
-            // that don't affect sending but clutter logs.
+            // 🛡️ ZERO-NOISE LOGGER: Suppress all decryption/signal noise permanently
             logger: pino({
-                level: "error", // Only show actual crashes
+                level: "error",
                 hooks: {
                     logMethod(inputArgs, method) {
-                        const msg = inputArgs[0];
-                        if (typeof msg === 'string' && (msg.includes('Bad MAC') || msg.includes('Failed to decrypt'))) {
-                            return; // Silently drop decryption noise
+                        const msg = JSON.stringify(inputArgs[0]);
+                        if (msg.includes('Bad MAC') || msg.includes('decrypt') || msg.includes('SessionError') || msg.includes('PreKeyError')) {
+                            return; // Total silence for decryption issues
                         }
                         method.apply(this, inputArgs);
                     }
-                }
+                },
+                // Force child loggers (internal Baileys) to also Be silent
+                base: null,
+                timestamp: false
             }),
             browser: Browsers.ubuntu("Chrome"), // Matches existing session
             connectTimeoutMs: 60000,
