@@ -112,17 +112,17 @@ export const startWorker = async () => {
                             throw new Error("RETRY_LATER: Session reconnecting");
                         }
 
-                        // 2. If session completely missing, but DB says connected (e.g. restart happened)
+                        // 2. Fail Fast & Retry Later (Decoupled Architecture)
+                        // If the session isn't ready, we wake up the background restorer but do NOT wait.
+                        // This ensures the worker slot is freed immediately for other businesses.
                         if (business && business.sessionStatus === "connected") {
-                            console.log(`[WORKER] [Job:${job.id}] Session missing/restoring. Yielding slot to other businesses...`);
+                            console.log(`[WORKER] [Job:${job.id}] Session not ready. Triggering background restore & Re-queuing...`);
 
-                            // Trigger background restoration (Safe: Won't start duplicates)
-                            initializeClient(businessId).catch(e => console.error(`[WORKER] Restore error:`, e.message));
+                            // Trigger background restoration (Fire & Forget)
+                            initializeClient(businessId).catch(e => console.error(`[WORKER] Background Init Error:`, e.message));
 
-                            // Yield slot immediately and retry in 10s
-                            // This prevents "Wait Storms" from blocking all 50 concurrency slots.
-                            await job.moveToDelayed(Date.now() + 10000);
-                            return;
+                            // Throw transient error to retry in 1 minute
+                            throw new Error("RETRY_LATER: Session restoring in background");
                         }
 
                         // 3. Only fail if DB explicitly says disconnected AND we have no session in memory

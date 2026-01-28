@@ -24,7 +24,6 @@ export const clients = {}; // { businessId: { sock, qr, status, reconnectAttempt
 const initializing = new Set();
 const keyCache = {}; // { businessId: { type: { id: data } } }
 const saveQueues = {}; // { businessId: Promise } - Sequential save queue
-let takeoverMutex = Promise.resolve(); // 🔒 Global Mutex for same-host takeovers
 
 // 🛡️ GLOBAL NOISE SILENCER: Catch Baileys/libsignal errors that leak into console
 const originalConsoleError = console.error;
@@ -319,34 +318,13 @@ const cleanBrokenSession = async (businessId) => {
 /* =======================
    MASTER LOCK SYSTEM
 ======================= */
+// 🔒 SIMPLE LOCK SYSTEM: Just check if we own it or if it's stale
 const acquireMasterLock = async (businessId) => {
     try {
         const now = new Date();
-        const timeout = 90000; // INCREASED: 90 seconds takeover for stale locks
+        const timeout = 120000; // 2 minutes (Generous timeout for stale locks)
 
-        // 1. First, check if the session entry exists (PROJECTION)
-        let session = await SessionStore.findOne({ businessId }).select('masterId lastHeartbeat businessEmail');
-
-        // 2. If it doesn't exist, try to create it (handles E11000 race condition)
-        if (!session) {
-            try {
-                const business = await Business.findById(businessId).select('email');
-                session = await SessionStore.create({
-                    businessId,
-                    businessEmail: business?.email || 'unknown',
-                    masterId: INSTANCE_ID,
-                    lastHeartbeat: now
-                });
-                return true;
-            } catch (err) {
-                if (err.code === 11000) {
-                    // Conflict: someone else created it during our call. Proceed to update.
-                    session = await SessionStore.findOne({ businessId });
-                } else throw err;
-            }
-        }
-
-        // 3. Try to acquire the lock atomically (PROJECTION)
+        // 1. Try to acquire or update lock if we own it or if it's stale
         const result = await SessionStore.findOneAndUpdate(
             {
                 businessId,
@@ -362,7 +340,7 @@ const acquireMasterLock = async (businessId) => {
                     lastHeartbeat: now
                 }
             },
-            { new: true, projection: { masterId: 1, businessEmail: 1 } }
+            { new: true, upsert: true, projection: { masterId: 1, businessEmail: 1 } }
         );
 
         if (result?.masterId === INSTANCE_ID) {
@@ -376,64 +354,9 @@ const acquireMasterLock = async (businessId) => {
             return true;
         }
 
-        // 4. HIJACK LOGIC: If ownership is from the same host, take it forcefully
-        const currentMaster = await SessionStore.findOne({ businessId }).select('masterId');
-        if (currentMaster?.masterId) {
-            // CRITICAL FIX: If WE are already the master, don't try to kill ourselves
-            if (currentMaster.masterId === INSTANCE_ID) return true;
-
-            const [masterHostname] = currentMaster.masterId.split('-');
-            const [myHostname] = INSTANCE_ID.split('-');
-
-            if (masterHostname === myHostname) {
-                // 🛡️ SERIAL TAKEOVER MUTEX: Force takeovers to happen one-at-a-time
-                // This prevents "Wait Storms" where 10 businesses all wait 10s in parallel and crash the VPS.
-                return takeoverMutex = takeoverMutex.then(async () => {
-                    console.warn(`[LOCK] [${INSTANCE_ID}] Starting SERIAL TAKEOVER for ${businessId}...`);
-
-                    // Re-check if someone else already took it while we were in the mutex queue
-                    const freshMaster = await SessionStore.findOne({ businessId }).select('masterId');
-                    if (freshMaster?.masterId === INSTANCE_ID) return true;
-
-                    let wasAlive = false;
-                    try {
-                        const ghostPid = currentMaster.masterId.split('-').pop();
-                        if (ghostPid && !isNaN(ghostPid)) {
-                            const { execSync } = await import('child_process');
-                            console.log(`[LOCK] 💀 Checking/Killing zombie PID: ${ghostPid}`);
-                            try {
-                                process.kill(parseInt(ghostPid), 0); // Check if alive
-                                wasAlive = true;
-                                execSync(`kill -9 ${ghostPid}`);
-                                console.log(`[LOCK] Zombie ${ghostPid} eliminated.`);
-                            } catch (e) {
-                                // Already dead
-                            }
-                        }
-                    } catch (kErr) { }
-
-                    // 🛡️ CONDITIONAL WAIT: Only wait 5s if the process was actually alive
-                    // This prevents "Wait Storms" when processes are already dead.
-                    if (wasAlive) {
-                        console.warn(`[LOCK] Waiting 5s for VPC to release resources for ${businessId}...`);
-                        await new Promise(r => setTimeout(r, 5000));
-                    }
-
-                    const finalResult = await SessionStore.findOneAndUpdate(
-                        { businessId },
-                        { $set: { masterId: INSTANCE_ID, lastHeartbeat: new Date() } },
-                        { new: true }
-                    );
-
-                    return finalResult?.masterId === INSTANCE_ID;
-                });
-            }
-        }
-
-        console.warn(`[LOCK] [${INSTANCE_ID}] Rejected - Controlled by: ${currentMaster?.masterId || 'unknown'}`);
         return false;
     } catch (err) {
-        console.error(`[LOCK] [${INSTANCE_ID}] Critical error:`, err.message);
+        console.error(`[LOCK] [${INSTANCE_ID}] Lock error:`, err.message);
         return false;
     }
 };
