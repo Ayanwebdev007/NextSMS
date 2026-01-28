@@ -24,6 +24,24 @@ export const clients = {}; // { businessId: { sock, qr, status, reconnectAttempt
 const initializing = new Set();
 const keyCache = {}; // { businessId: { type: { id: data } } }
 const saveQueues = {}; // { businessId: Promise } - Sequential save queue
+let takeoverMutex = Promise.resolve(); // 🔒 Global Mutex for same-host takeovers
+
+// 🛡️ GLOBAL NOISE SILENCER: Catch Baileys/libsignal errors that leak into console
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed'];
+
+console.error = (...args) => {
+    const msg = args.join(' ');
+    if (SILENCE_PATTERNS.some(p => msg.includes(p))) return;
+    originalConsoleError.apply(console, args);
+};
+
+console.warn = (...args) => {
+    const msg = args.join(' ');
+    if (SILENCE_PATTERNS.some(p => msg.includes(p))) return;
+    originalConsoleWarn.apply(console, args);
+};
 
 // 🧹 CACHE CLEANUP: Prevent memory bloat by clearing inactive key caches every hour
 setInterval(() => {
@@ -342,41 +360,36 @@ const acquireMasterLock = async (businessId) => {
             const [myHostname] = INSTANCE_ID.split('-');
 
             if (masterHostname === myHostname) {
-                console.warn(`[LOCK] [${INSTANCE_ID}] FORCE TAKEOVER from same-host: ${currentMaster.masterId}`);
+                // 🛡️ SERIAL TAKEOVER MUTEX: Force takeovers to happen one-at-a-time
+                // This prevents "Wait Storms" where 10 businesses all wait 10s in parallel and crash the VPS.
+                return takeoverMutex = takeoverMutex.then(async () => {
+                    console.warn(`[LOCK] [${INSTANCE_ID}] Starting SERIAL TAKEOVER for ${businessId}...`);
 
-                // 💀 GHOST KILLER: Extract PID and kill the zombie process
-                // Format: hostname-PID (e.g., srv123-45678)
-                try {
-                    const ghostPid = currentMaster.masterId.split('-').pop();
-                    if (ghostPid && !isNaN(ghostPid)) {
-                        const { exec } = await import('child_process');
-                        console.log(`[LOCK] 💀 Executing TARGETED KILL on zombie PID: ${ghostPid}`);
-                        exec(`kill -9 ${ghostPid}`, (err) => {
-                            if (err) console.log(`[LOCK] Kill result: ${err.message}`);
-                            else console.log(`[LOCK] Zombie ${ghostPid} eliminated.`);
-                        });
-                    }
-                } catch (kErr) {
-                    console.error(`[LOCK] Failed to kill zombie: ${kErr.message}`);
-                }
+                    // Re-check if someone else already took it while we were in the mutex queue
+                    const freshMaster = await SessionStore.findOne({ businessId });
+                    if (freshMaster?.masterId === INSTANCE_ID) return true;
 
-                // 🛡️ PATIENCE GUARD: Force a 10s wait after killing the same-host process
-                // This gives Baileys and the VPS time to release the session keys/ports.
-                // Prevents "Double-Active" sockets on the same instance.
-                console.warn(`[LOCK] Waiting 10s for VPC to release ghost process...`);
-                await new Promise(r => setTimeout(r, 10000));
-
-                const finalResult = await SessionStore.findOneAndUpdate(
-                    { businessId },
-                    {
-                        $set: {
-                            masterId: INSTANCE_ID,
-                            lastHeartbeat: now
+                    try {
+                        const ghostPid = currentMaster.masterId.split('-').pop();
+                        if (ghostPid && !isNaN(ghostPid)) {
+                            const { exec } = await import('child_process');
+                            console.log(`[LOCK] 💀 Executing TARGETED KILL on zombie PID: ${ghostPid}`);
+                            exec(`kill -9 ${ghostPid}`, () => { }); // Fire and forget
                         }
-                    },
-                    { new: true }
-                );
-                return finalResult?.masterId === INSTANCE_ID;
+                    } catch (kErr) { }
+
+                    // PATIENCE GUARD: Wait for VPC to release resources
+                    await new Promise(r => setTimeout(r, 5000));
+
+                    const finalResult = await SessionStore.findOneAndUpdate(
+                        { businessId },
+                        { $set: { masterId: INSTANCE_ID, lastHeartbeat: new Date() } },
+                        { new: true }
+                    );
+
+                    console.log(`[LOCK] Takeover complete for ${businessId}. Success: ${finalResult?.masterId === INSTANCE_ID}`);
+                    return finalResult?.masterId === INSTANCE_ID;
+                });
             }
         }
 
