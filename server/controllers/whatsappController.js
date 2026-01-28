@@ -322,7 +322,7 @@ const cleanBrokenSession = async (businessId) => {
 const acquireMasterLock = async (businessId) => {
     try {
         const now = new Date();
-        const timeout = 120000; // 2 minutes (Generous timeout for stale locks)
+        const timeout = 30000; // 30 seconds (Fast takeover for restarts)
 
         // 1. Try to acquire or update lock if we own it or if it's stale
         const result = await SessionStore.findOneAndUpdate(
@@ -338,6 +338,9 @@ const acquireMasterLock = async (businessId) => {
                 $set: {
                     masterId: INSTANCE_ID,
                     lastHeartbeat: now
+                },
+                $setOnInsert: {
+                    businessEmail: 'pending'
                 }
             },
             { new: true, upsert: true, projection: { masterId: 1, businessEmail: 1 } }
@@ -345,7 +348,7 @@ const acquireMasterLock = async (businessId) => {
 
         if (result?.masterId === INSTANCE_ID) {
             // Self-healing: Populate email if missing
-            if (result && !result.businessEmail) {
+            if (result && (!result.businessEmail || result.businessEmail === 'pending')) {
                 const business = await Business.findById(businessId).select('email');
                 if (business) {
                     await SessionStore.updateOne({ _id: result._id }, { $set: { businessEmail: business.email } });
@@ -356,6 +359,22 @@ const acquireMasterLock = async (businessId) => {
 
         return false;
     } catch (err) {
+        // E11000 means document exists - check if we can take it over
+        if (err.code === 11000) {
+            try {
+                const existing = await SessionStore.findOne({ businessId });
+                if (existing && existing.lastHeartbeat && (now - existing.lastHeartbeat) > timeout) {
+                    // Force takeover of stale lock
+                    await SessionStore.updateOne(
+                        { businessId },
+                        { $set: { masterId: INSTANCE_ID, lastHeartbeat: now } }
+                    );
+                    return true;
+                }
+            } catch (e) {
+                console.error(`[LOCK] [${INSTANCE_ID}] Takeover attempt failed:`, e.message);
+            }
+        }
         console.error(`[LOCK] [${INSTANCE_ID}] Lock error:`, err.message);
         return false;
     }
