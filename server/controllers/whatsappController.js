@@ -186,12 +186,22 @@ const useMongoDBAuthState = async (businessId) => {
 
                         for (const type in data) {
                             if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
-                            const isCreds = type === 'creds';
+
+                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions to prevent DB bloat
+                            // If we have more than 200 items of a certain type, keep only the latest 50
+                            const currentKeys = Object.keys(keyCache[businessId][type]);
+                            if (currentKeys.length > 200 && (type === 'pre-key' || type === 'session' || type === 'app-state-sync-key-share')) {
+                                console.log(`[JANITOR] Pruning ${type} for ${businessId} (${currentKeys.length} items)...`);
+                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 100);
+                                for (const k of keysToRemove) {
+                                    delete keyCache[businessId][type][k];
+                                    deletions[`data.${type}.${k}`] = 1;
+                                }
+                            }
 
                             for (const id in data[type]) {
                                 const val = data[type][id];
                                 const keyPath = `data.${type}.${id}`;
-                                const redisKey = `auth:${businessId}:${type}:${id}`;
 
                                 if (val) {
                                     const serialized = JSON.parse(JSON.stringify(val, BufferJSON.replacer));
@@ -209,18 +219,24 @@ const useMongoDBAuthState = async (businessId) => {
                         if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
                         if (Object.keys(operations).length > 0) {
-                            // Guard: Don't save if we are disconnecting to prevent re-creation race
-                            if (clients[businessId]?.manualCleanup || clients[businessId]?.manualDisconnect) {
-                                return;
-                            }
+                            const bizId = businessId; // Closure safety
+                            if (clients[bizId]?.manualCleanup || clients[bizId]?.manualDisconnect) return;
 
-                            // 🛡️ Sequential Sync: Reuse the save queue for key updates to prevent corruption
-                            if (!saveQueues[businessId]) saveQueues[businessId] = Promise.resolve();
-                            saveQueues[businessId] = saveQueues[businessId].then(async () => {
+                            if (!saveQueues[bizId]) saveQueues[bizId] = Promise.resolve();
+                            saveQueues[bizId] = saveQueues[bizId].then(async () => {
                                 try {
-                                    await SessionStore.updateOne({ businessId }, operations, { upsert: true });
+                                    await SessionStore.updateOne({ businessId: bizId }, operations, { upsert: true });
                                 } catch (err) {
-                                    console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
+                                    // If document is too large (16MB), emergency prune everything except creds
+                                    if (err.message.includes('too large') || err.code === 10334) {
+                                        console.error(`[CRITICAL] Session ${bizId} exceeds 16MB limit! Emergency purging non-essential keys...`);
+                                        await SessionStore.updateOne(
+                                            { businessId: bizId },
+                                            { $set: { "data.pre-key": {}, "data.session": {}, "data.sender-key": {} } }
+                                        );
+                                    } else {
+                                        console.error(`[AUTH] Background key save failed:`, err.message);
+                                    }
                                 }
                             });
                         }
