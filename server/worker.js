@@ -120,19 +120,24 @@ export const startWorker = async () => {
                             try {
                                 const healStart = Date.now();
                                 await initializeClient(businessId);
-                                console.log(`[WORKER] [Job:${job.id}] InitializeClient took ${Date.now() - healStart}ms`);
 
-                                // Wait 5s for it to connect
-                                await new Promise(r => setTimeout(r, 5000));
-                                clientData = clients[businessId];
+                                // PATIENT WAIT LOOP (30s): High volume sync takes time
+                                // We extend the job lock every 10s to ensure BullMQ doesn't think we crashed
+                                for (let i = 0; i < 6; i++) {
+                                    await new Promise(r => setTimeout(r, 5000));
+                                    clientData = clients[businessId];
+                                    if (clientData?.status === "ready") {
+                                        console.log(`[WORKER] [Job:${job.id}] ✅ Self-healing successful!`);
+                                        return; // RE-RUN: The job will be picked up again immediately
+                                    }
 
-                                if (clientData?.status === "ready") {
-                                    console.log(`[WORKER] [Job:${job.id}] ✅ Self-healing successful! Resuming...`);
-                                    return; // RE-RUN: The job will be picked up again immediately and process normally
-                                } else {
-                                    throw new Error("RETRY_LATER: Healing in progress");
+                                    // 🛡️ Keep BullMQ alive during long history sync
+                                    try { await job.updateProgress(10 + (i * 10)); } catch (e) { }
                                 }
+
+                                throw new Error("RETRY_LATER: Heavy sync in progress");
                             } catch (e) {
+                                if (e.message.includes("RETRY_LATER")) throw e;
                                 console.error(`[WORKER] Healing failed: ${e.message}`);
                                 throw new Error("RETRY_LATER: Healing failed");
                             }

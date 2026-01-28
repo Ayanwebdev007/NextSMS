@@ -29,16 +29,31 @@ let takeoverMutex = Promise.resolve(); // 🔒 Global Mutex for same-host takeov
 // 🛡️ GLOBAL NOISE SILENCER: Catch Baileys/libsignal errors that leak into console
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
-const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError', 'failed to decrypt'];
+const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError', 'failed to decrypt', 'SessionEntry', 'registrationId', 'indexInfo'];
 
 console.error = (...args) => {
-    const raw = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    // 🛡️ ULTRA-SILENCE: Never stringify large objects for logs - prevents event-loop freeze
+    const raw = args.map(arg => {
+        if (typeof arg === 'object' && arg !== null) {
+            const str = JSON.stringify(arg);
+            return str.length > 500 ? "[LARGE_OBJECT_SILENCED]" : str;
+        }
+        return String(arg);
+    }).join(' ');
+
     if (SILENCE_PATTERNS.some(p => raw.includes(p))) return;
     originalConsoleError.apply(console, args);
 };
 
 console.warn = (...args) => {
-    const raw = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    const raw = args.map(arg => {
+        if (typeof arg === 'object' && arg !== null) {
+            const str = JSON.stringify(arg);
+            return str.length > 500 ? "[LARGE_OBJECT_SILENCED]" : str;
+        }
+        return String(arg);
+    }).join(' ');
+
     if (SILENCE_PATTERNS.some(p => raw.includes(p))) return;
     originalConsoleWarn.apply(console, args);
 };
