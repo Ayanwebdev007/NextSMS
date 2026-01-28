@@ -797,11 +797,17 @@ export const getSessionStatus = asyncHandler(async (req, res) => {
 
     // --- SCALABILITY: Lazy loading on dashboard visit ---
     if (!client && !initializing.has(businessId)) {
-        const hasSessionInDB = await SessionStore.findOne({ businessId });
-        if (hasSessionInDB) {
-            console.log(`[LAZY-LOAD] Waking up session for ${businessId} via dashboard view...`);
-            initializeClient(businessId);
-            return res.json({ status: "initializing" });
+        const business = await Business.findById(businessId);
+        const statusInDB = business?.sessionStatus || "disconnected";
+
+        // ONLY wake up if the business is supposed to be connected
+        if (statusInDB === "connected") {
+            const hasSessionInDB = await SessionStore.findOne({ businessId });
+            if (hasSessionInDB && hasSessionInDB.data && hasSessionInDB.data.creds) {
+                console.log(`[LAZY-LOAD] Waking up session for ${businessId} via dashboard view...`);
+                initializeClient(businessId);
+                return res.json({ status: "initializing" });
+            }
         }
     }
 
