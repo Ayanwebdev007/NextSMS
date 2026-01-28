@@ -29,27 +29,26 @@ let takeoverMutex = Promise.resolve(); // 🔒 Global Mutex for same-host takeov
 // 🛡️ GLOBAL NOISE SILENCER: Catch Baileys/libsignal errors that leak into console
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
-const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError', 'failed to decrypt', 'SessionEntry', 'registrationId', 'indexInfo'];
+const originalConsoleLog = console.log;
+const originalConsoleInfo = console.info;
 
-console.error = (...args) => {
-    // 🛡️ ULTRA-FAST SILENCE: Never stringify. Just check basic patterns.
-    // This prevents the event loop from freezing on giant objects.
+const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError', 'failed to decrypt', 'SessionEntry', 'registrationId', 'indexInfo', 'currentRatchet', 'pendingPreKey'];
+
+// 🛡️ ULTRA-FAST TOTAL SILENCE: Drops noisy Baileys logs without CPU-heavy stringification
+const SILENCE_GUARD = (...args) => {
     for (const arg of args) {
-        if (typeof arg === 'string' && SILENCE_PATTERNS.some(p => arg.includes(p))) return;
+        if (typeof arg === 'string' && SILENCE_PATTERNS.some(p => arg.includes(p))) return true;
         if (typeof arg === 'object' && arg !== null) {
-            if (arg.isSessionRecordError || arg.name === 'PreKeyError' || arg.registrationId || arg.remoteJid) return;
+            if (arg.isSessionRecordError || arg.name === 'PreKeyError' || arg.registrationId || arg.remoteJid || arg._chains) return true;
         }
     }
-    originalConsoleError.apply(console, args);
+    return false;
 };
 
-console.warn = (...args) => {
-    for (const arg of args) {
-        if (typeof arg === 'string' && SILENCE_PATTERNS.some(p => arg.includes(p))) return;
-        if (typeof arg === 'object' && arg !== null && (arg.registrationId || arg.remoteJid)) return;
-    }
-    originalConsoleWarn.apply(console, args);
-};
+console.error = (...args) => { if (SILENCE_GUARD(...args)) return; originalConsoleError.apply(console, args); };
+console.warn = (...args) => { if (SILENCE_GUARD(...args)) return; originalConsoleWarn.apply(console, args); };
+console.log = (...args) => { if (SILENCE_GUARD(...args)) return; originalConsoleLog.apply(console, args); };
+console.info = (...args) => { if (SILENCE_GUARD(...args)) return; originalConsoleInfo.apply(console, args); };
 
 // 🧹 CACHE CLEANUP: Prevent memory bloat by clearing inactive key caches every hour
 setInterval(() => {
@@ -117,19 +116,19 @@ const useMongoDBAuthState = async (businessId) => {
         // Deserialize existing session from DB
         console.log(`[AUTH] Restoring session from DB for ${businessId}`);
 
-        // 🛡️ EMERGENCY REPAIR: If this is the specific "stalled" email, surgically scrub the data bloat
+        // 🛡️ NON-BLOCKING REPAIR: Surgically scrub bloat without freezing the VPS
+        // If it's iconcomputer or data seems present, we check one specific small key to verify existence
         if (existingSession.businessEmail === "iconcomputer741126@gmail.com") {
-            const dataSizeMB = JSON.stringify(existingSession.data).length / (1024 * 1024);
-            if (dataSizeMB > 1) {
-                console.warn(`[REPAIR] 🛠️  Business ${businessId} has massive data (${dataSizeMB.toFixed(2)}MB). Executing Surgical Scrub...`);
-                // WIPE everything except creds. This preserves the login but kills the 10MB of history garbage.
+            // Check for bloating keys without stringifying the whole object
+            const keys = Object.keys(existingSession.data || {});
+            if (keys.length > 2) { // More than just 'creds' and maybe one other
+                console.warn(`[REPAIR] 🛠️  Business ${businessId} has extensive data. Executing Automatic Scrub...`);
                 await SessionStore.updateOne(
                     { businessId },
                     { $set: { "data.pre-key": {}, "data.session": {}, "data.sender-key": {}, "data.app-state-sync-key-share": {} } }
                 );
-                // Force a fresh read of the cleaned document
-                const cleaned = await SessionStore.findOne({ businessId });
-                creds = JSON.parse(JSON.stringify(cleaned.data.creds), BufferJSON.reviver);
+                // Return just the creds from what we already have (no Fresh JSON needed)
+                creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
             } else {
                 creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
             }

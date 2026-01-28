@@ -455,18 +455,18 @@ export const startWorker = async () => {
         },
         {
             connection,
-            concurrency: 50,  // UNHINGED: Allow many parallel jobs so anti-ban sleeps don't block
-            lockDuration: 600000, // INCREASED: 10 minutes (Ensures worker doesn't lose lock during slow sends/history sync)
-            stalledInterval: 300000, // INCREASED: 5 minutes (Matches lock/healing duration)
+            concurrency: 20,  // REDUCED: 20 parallel (Safer for single-core event loop)
+            lockDuration: 900000, // INCREASED: 15 minutes (Total safety during slow history restorations)
+            stalledInterval: 450000, // 7.5 minutes
             maxStalledCount: 1,
-            drainDelay: 1000, // REDUCED: 1s (was 30s) - Checks for jobs more frequently when empty
+            drainDelay: 500, // REDUCED: 0.5s for snappier delivery
             limiter: {
-                max: 100,      // INCREASED: 100 messages per client per minute
-                duration: 60000,  // per minute
-                groupKey: 'businessId' // SCALABILITY: Limits apply per business, not globally
+                max: 120,      // INCREASED: 120 messages per business per minute
+                duration: 60000,
+                groupKey: 'businessId'
             },
-            removeOnComplete: { count: 100 }, // Auto-cleanup to save Redis memory
-            removeOnFail: { count: 100 }
+            removeOnComplete: { count: 50 },
+            removeOnFail: { count: 50 }
         }
     );
 
