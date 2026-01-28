@@ -523,12 +523,8 @@ export const initializeClient = async (businessId) => {
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 90000,
             keepAliveIntervalMs: 15000,
-            retryRequestDelayMs: 5000,
-            // 🛡️ CONDITIONAL HISTORY SYNC:
-            // - NEW pairing (no existing creds): MUST sync to complete WhatsApp handshake
-            // - RECONNECTING (has creds): Skip sync to reduce CPU/RAM
-            syncFullHistory: !sessionEntry?.data?.creds,  // Only sync if it's a NEW pairing
-            markOnlineOnConnect: !sessionEntry?.data?.creds  // Only mark online for NEW pairing
+            retryRequestDelayMs: 5000
+            // Sync settings removed - using Baileys defaults for maximum compatibility
         });
 
         // PRESERVE reconnectAttempts from memory or DB
