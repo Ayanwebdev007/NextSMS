@@ -438,7 +438,11 @@ setInterval(() => {
 ======================= */
 export const initializeClient = async (businessId) => {
     // SYNC GUARD: Prevent racing initializations
-    if (clients[businessId]?.status === "ready") return;
+    if (clients[businessId]?.status === "ready" || clients[businessId]?.sock) {
+        console.log(`[WhatsApp] Socket already exists for ${businessId}, skipping init.`);
+        initializing.delete(businessId);
+        return;
+    }
     if (initializing.has(businessId)) {
         console.log(`[WhatsApp] Already initializing ${businessId}, skipping duplicate call.`);
         return;
@@ -693,7 +697,19 @@ export const initializeClient = async (businessId) => {
                     };
 
                     initializing.delete(businessId);
-                    setTimeout(() => initializeClient(businessId), delay);
+
+                    // 🛡️ RETRY GUARD: Prevent multiple overlapping reconnect timers
+                    if (!clients[businessId]?.retryActive) {
+                        if (clients[businessId]) clients[businessId].retryActive = true;
+
+                        setTimeout(() => {
+                            if (clients[businessId]) clients[businessId].retryActive = false;
+                            console.log(`[WhatsApp] Retry timer fired for ${businessId}. Initializing...`);
+                            initializeClient(businessId);
+                        }, delay);
+                    } else {
+                        console.log(`[WhatsApp] Reconnect timer already active for ${businessId}, ignoring duplicate.`);
+                    }
                 } else {
                     console.error(`[WhatsApp] Permanent logout for ${businessId}. Wiping session to allow fresh QR.`);
                     delete clients[businessId];
