@@ -515,11 +515,11 @@ export const initializeClient = async (businessId) => {
 
         const sock = makeWASocket({
             auth: state,
-            // 🛡️ DEEP-SILENCE LOGGER: Catch noise before it ever reaches stdout
+            // 🛡️ DEBUG LOGGER: Enabling info level to catch connection errors
             logger: pino({
-                level: "silent", // COMPLETELY SILENT (Production standard for high-volume)
+                level: "info", // TEMPORARY DEBUGGING
             }),
-            browser: Browsers.ubuntu("Chrome"), // Matches existing session
+            browser: ["NextSMS", "Chrome", "1.0.0"], // Custom browser string for better stability
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 90000,
             keepAliveIntervalMs: 15000,
@@ -613,7 +613,7 @@ export const initializeClient = async (businessId) => {
                             console.error(`[WhatsApp] Error forcing QR regeneration: ${e.message}`);
                         }
                     }
-                }, 10000); // 10 seconds
+                }, 45000); // 45 seconds
             }
 
             if (connection === "open") {
@@ -673,6 +673,12 @@ export const initializeClient = async (businessId) => {
                 if (sock.manualCleanup) {
                     console.log(`[WhatsApp] Skipping reconnect for ${businessId} (Intentional cleanup)`);
                     return;
+                }
+
+                // 🔍 FULL ERROR LOGGING
+                if (lastDisconnect?.error) {
+                    console.error(`[WhatsApp] 🛑 Detailed Error for ${businessId}:`, JSON.stringify(lastDisconnect.error, null, 2));
+                    if (lastDisconnect.error.output) console.error(`[WhatsApp] Output Payload:`, JSON.stringify(lastDisconnect.error.output, null, 2));
                 }
 
                 console.warn(`[WhatsApp] Close [${businessId}] Status: ${statusCode || 'unknown'}, UnstableCount: ${session.unstableCount || 0}, Conflict: ${isConflict}`);
@@ -924,6 +930,11 @@ export const disconnectSession = asyncHandler(async (req, res) => {
     // Ensure guard is cleared
     initializing.delete(businessId);
     deleteSessionFolder(businessId);
+
+    // NUCLEAR WIPE: Remove the session from MongoDB as well
+    // This is critical. If we don't do this, the next connection attempt
+    // might pick up the old 'creds' and try to resume a dead session.
+    await SessionStore.deleteOne({ businessId });
 
     await Business.findByIdAndUpdate(businessId, {
         sessionStatus: "disconnected",
