@@ -157,9 +157,14 @@ const useMongoDBAuthState = async (businessId) => {
                     // 🚀 FALLBACK: All keys now fetch from MongoDB (Redis sync removed to save costs)
                     const idsToFetchFromDB = [...missingIds];
 
-                    // 3. Fallback to MongoDB for missing keys
+                    // 3. Fallback to MongoDB for missing keys (OPTIMIZED: Using Projection)
                     if (idsToFetchFromDB.length > 0) {
-                        const session = await SessionStore.findOne({ businessId });
+                        const projection = {};
+                        for (const id of idsToFetchFromDB) {
+                            projection[`data.${type}.${id}`] = 1;
+                        }
+
+                        const session = await SessionStore.findOne({ businessId }, projection);
                         if (session?.data?.[type]) {
                             for (const id of idsToFetchFromDB) {
                                 const val = session.data[type][id];
