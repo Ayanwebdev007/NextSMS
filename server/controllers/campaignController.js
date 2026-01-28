@@ -60,7 +60,10 @@ export const startCampaign = asyncHandler(async (req, res) => {
                 filePath: filePath,
                 minDelay: minDelay || 4000, // Pass delay range to worker
                 maxDelay: maxDelay || 10000
-            }, jobOptions);
+            }, {
+                ...jobOptions,
+                priority: 10 // 📉 LOW PRIORITY: Campaigns run in background
+            });
         } catch (err) {
             console.error(`[QUEUE] ❌ Campaign ${campaign._id}: Failed to add job for ${item.phoneNumber}:`, err.message);
         }

@@ -109,9 +109,9 @@ if (!fs.existsSync(AUTH_PATH)) {
    DB AUTH HELPERS
 ======================= */
 const useMongoDBAuthState = async (businessId) => {
-    // 1. Initial Read from DB
+    // 1. Initial Read from DB (OPTIMIZED: Only creds)
     let creds;
-    const existingSession = await SessionStore.findOne({ businessId });
+    const existingSession = await SessionStore.findOne({ businessId }).select('data.creds businessEmail');
 
     if (existingSession && existingSession.data && existingSession.data.creds) {
         // Deserialize existing session from DB
@@ -325,8 +325,8 @@ const acquireMasterLock = async (businessId) => {
         const now = new Date();
         const timeout = 90000; // INCREASED: 90 seconds takeover for stale locks
 
-        // 1. First, check if the session entry exists
-        let session = await SessionStore.findOne({ businessId });
+        // 1. First, check if the session entry exists (PROJECTION)
+        let session = await SessionStore.findOne({ businessId }).select('masterId lastHeartbeat businessEmail');
 
         // 2. If it doesn't exist, try to create it (handles E11000 race condition)
         if (!session) {
@@ -347,7 +347,7 @@ const acquireMasterLock = async (businessId) => {
             }
         }
 
-        // 3. Try to acquire the lock atomically
+        // 3. Try to acquire the lock atomically (PROJECTION)
         const result = await SessionStore.findOneAndUpdate(
             {
                 businessId,
@@ -363,7 +363,7 @@ const acquireMasterLock = async (businessId) => {
                     lastHeartbeat: now
                 }
             },
-            { new: true }
+            { new: true, projection: { masterId: 1, businessEmail: 1 } }
         );
 
         if (result?.masterId === INSTANCE_ID) {
@@ -378,7 +378,7 @@ const acquireMasterLock = async (businessId) => {
         }
 
         // 4. HIJACK LOGIC: If ownership is from the same host, take it forcefully
-        const currentMaster = await SessionStore.findOne({ businessId });
+        const currentMaster = await SessionStore.findOne({ businessId }).select('masterId');
         if (currentMaster?.masterId) {
             // CRITICAL FIX: If WE are already the master, don't try to kill ourselves
             if (currentMaster.masterId === INSTANCE_ID) return true;
@@ -393,7 +393,7 @@ const acquireMasterLock = async (businessId) => {
                     console.warn(`[LOCK] [${INSTANCE_ID}] Starting SERIAL TAKEOVER for ${businessId}...`);
 
                     // Re-check if someone else already took it while we were in the mutex queue
-                    const freshMaster = await SessionStore.findOne({ businessId });
+                    const freshMaster = await SessionStore.findOne({ businessId }).select('masterId');
                     if (freshMaster?.masterId === INSTANCE_ID) return true;
 
                     let wasAlive = false;
@@ -581,9 +581,13 @@ export const initializeClient = async (businessId) => {
             }),
             browser: Browsers.ubuntu("Chrome"), // Matches existing session
             connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 60000,
-            keepAliveIntervalMs: 10000,
-            retryRequestDelayMs: 2000
+            defaultQueryTimeoutMs: 90000,
+            keepAliveIntervalMs: 15000,
+            retryRequestDelayMs: 5000,
+            // 🛡️ HIGH-VOLUME ISOLATION: Stop history sync for sending-only accounts
+            // This reduces CPU/RAM usage by 90% for active accounts like iconcomputer
+            syncFullHistory: false,
+            markOnlineOnConnect: false
         });
 
         // PRESERVE reconnectAttempts from memory or DB

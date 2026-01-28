@@ -114,33 +114,15 @@ export const startWorker = async () => {
 
                         // 2. If session completely missing, but DB says connected (e.g. restart happened)
                         if (business && business.sessionStatus === "connected") {
-                            console.log(`[WORKER] [Job:${job.id}] Session missing in memory. 🛠️  Attempting SELF-HEALING restore for ${businessId}...`);
+                            console.log(`[WORKER] [Job:${job.id}] Session missing/restoring. Yielding slot to other businesses...`);
 
-                            // Active Self-Healing
-                            try {
-                                const healStart = Date.now();
-                                await initializeClient(businessId);
+                            // Trigger background restoration (Safe: Won't start duplicates)
+                            initializeClient(businessId).catch(e => console.error(`[WORKER] Restore error:`, e.message));
 
-                                // PATIENT WAIT LOOP (30s): High volume sync takes time
-                                // We extend the job lock every 10s to ensure BullMQ doesn't think we crashed
-                                for (let i = 0; i < 6; i++) {
-                                    await new Promise(r => setTimeout(r, 5000));
-                                    clientData = clients[businessId];
-                                    if (clientData?.status === "ready") {
-                                        console.log(`[WORKER] [Job:${job.id}] ✅ Self-healing successful!`);
-                                        return; // RE-RUN: The job will be picked up again immediately
-                                    }
-
-                                    // 🛡️ Keep BullMQ alive during long history sync
-                                    try { await job.updateProgress(10 + (i * 10)); } catch (e) { }
-                                }
-
-                                throw new Error("RETRY_LATER: Heavy sync in progress");
-                            } catch (e) {
-                                if (e.message.includes("RETRY_LATER")) throw e;
-                                console.error(`[WORKER] Healing failed: ${e.message}`);
-                                throw new Error("RETRY_LATER: Healing failed");
-                            }
+                            // Yield slot immediately and retry in 10s
+                            // This prevents "Wait Storms" from blocking all 50 concurrency slots.
+                            await job.moveToDelayed(Date.now() + 10000);
+                            return;
                         }
 
                         // 3. Only fail if DB explicitly says disconnected AND we have no session in memory
