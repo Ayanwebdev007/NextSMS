@@ -320,10 +320,10 @@ const cleanBrokenSession = async (businessId) => {
 ======================= */
 // 🔒 SIMPLE LOCK SYSTEM: Just check if we own it or if it's stale
 const acquireMasterLock = async (businessId) => {
-    try {
-        const now = new Date();
-        const timeout = 30000; // 30 seconds (Fast takeover for restarts)
+    const now = new Date();
+    const timeout = 30000; // 30 seconds (Fast takeover for restarts)
 
+    try {
         // 1. Try to acquire or update lock if we own it or if it's stale
         const result = await SessionStore.findOneAndUpdate(
             {
@@ -375,7 +375,6 @@ const acquireMasterLock = async (businessId) => {
                 console.error(`[LOCK] [${INSTANCE_ID}] Takeover attempt failed:`, e.message);
             }
         }
-        console.error(`[LOCK] [${INSTANCE_ID}] Lock error:`, err.message);
         return false;
     }
 };
