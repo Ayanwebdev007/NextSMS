@@ -747,9 +747,11 @@ export const connectSession = asyncHandler(async (req, res) => {
         }
         // If it's already initializing but the user clicked connect again, kill the old one
         if (clients[businessId].sock) {
+            clients[businessId].sock.manualCleanup = true; // Ensure no reconnect loop
             try { clients[businessId].sock.end(); } catch (e) { }
         }
         delete clients[businessId];
+        initializing.delete(businessId); // CLEAR THE GUARD
     }
 
     // ZERO-DELETION POLICY: Do NOT wipe existing session data
@@ -856,6 +858,7 @@ export const disconnectSession = asyncHandler(async (req, res) => {
         client.manualDisconnect = true;
 
         if (client.sock) {
+            client.sock.manualCleanup = true; // CRITICAL: Stop reconnection loop
             try {
                 await client.sock.logout();
             } catch (e) {
@@ -868,7 +871,8 @@ export const disconnectSession = asyncHandler(async (req, res) => {
         delete clients[businessId];
     }
 
-    // deleted initializing reference
+    // Ensure guard is cleared
+    initializing.delete(businessId);
     deleteSessionFolder(businessId);
 
     await Business.findByIdAndUpdate(businessId, {
