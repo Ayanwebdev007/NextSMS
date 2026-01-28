@@ -446,13 +446,13 @@ export const initializeClient = async (businessId) => {
 
     initializing.add(businessId);
 
-    // 🛡️ EMERGENCY TIMEOUT: If init hangs for >60s, clear the guard
+    // 🛡️ EMERGENCY TIMEOUT: If init hangs for >120s, clear the guard
     setTimeout(() => {
         if (initializing.has(businessId)) {
             console.warn(`[WhatsApp] Init safety timeout reached for ${businessId}. Clearing guard.`);
             initializing.delete(businessId);
         }
-    }, 60000);
+    }, 120000); // 2 minutes (Gives Baileys plenty of time to restore)
 
     console.log(`[WhatsApp] Initializing socket for ${businessId}...`);
 
