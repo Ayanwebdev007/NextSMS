@@ -110,7 +110,10 @@ const useMongoDBAuthState = async (businessId) => {
                 { upsert: true, new: true }
             );
 
-            console.log(`[AUTH] Credentials saved for ${businessId}`);
+            // Guard: Don't log success if we are disconnecting (prevents race confusion)
+            if (!(clients[businessId]?.manualCleanup || clients[businessId]?.manualDisconnect)) {
+                console.log(`[AUTH] Credentials saved for ${businessId}`);
+            }
             return result;
         } catch (err) {
             console.error(`[AUTH] Failed to save credentials for ${businessId}:`, err.message);
@@ -190,6 +193,11 @@ const useMongoDBAuthState = async (businessId) => {
                         if (Object.keys(deletions).length > 0) operations.$unset = deletions;
 
                         if (Object.keys(operations).length > 0) {
+                            // Guard: Don't save if we are disconnecting to prevent re-creation race
+                            if (clients[businessId]?.manualCleanup || clients[businessId]?.manualDisconnect) {
+                                return;
+                            }
+
                             // Update MongoDB (Persistent) - Background
                             SessionStore.updateOne({ businessId }, operations, { upsert: true }).catch(err => {
                                 console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
@@ -672,9 +680,13 @@ export const initializeClient = async (businessId) => {
                     initializing.delete(businessId);
                     setTimeout(() => initializeClient(businessId), delay);
                 } else {
-                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Session preserved.`);
+                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Wiping session to allow fresh QR.`);
                     delete clients[businessId];
                     initializing.delete(businessId);
+
+                    // CRITICAL: Wipe the broken session from DB
+                    deleteSessionFolder(businessId);
+
                     await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
 
                     // 🛡️ THROTTLE: Only log auth failure activity once every 10 mins
