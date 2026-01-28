@@ -527,8 +527,8 @@ export const initializeClient = async (businessId) => {
             // 🛡️ CONDITIONAL HISTORY SYNC:
             // - NEW pairing (no existing creds): MUST sync to complete WhatsApp handshake
             // - RECONNECTING (has creds): Skip sync to reduce CPU/RAM
-            syncFullHistory: !existingSession?.data?.creds,  // Only sync if it's a NEW pairing
-            markOnlineOnConnect: !existingSession?.data?.creds  // Only mark online for NEW pairing
+            syncFullHistory: !sessionEntry?.data?.creds,  // Only sync if it's a NEW pairing
+            markOnlineOnConnect: !sessionEntry?.data?.creds  // Only mark online for NEW pairing
         });
 
         // PRESERVE reconnectAttempts from memory or DB
