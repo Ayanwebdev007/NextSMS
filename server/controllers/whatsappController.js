@@ -641,100 +641,71 @@ export const initializeClient = async (businessId) => {
 
             if (connection === "close") {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const isConflict = statusCode === 440;
+                const isLoggedOut = statusCode === DisconnectReason.loggedOut;
 
-                // Clear QR timer if connection closed
-                if (session.qrTimer) {
-                    clearTimeout(session.qrTimer);
-                    session.qrTimer = null;
-                }
+                if (session.qrTimer) { clearTimeout(session.qrTimer); session.qrTimer = null; }
+                if (session.stableTimer) { clearTimeout(session.stableTimer); session.stableTimer = null; }
 
-                // 1. If it was an intentional cleanup, don't reconnect
                 if (sock.manualCleanup) {
                     console.log(`[WhatsApp] Skipping reconnect for ${businessId} (Intentional cleanup)`);
                     return;
                 }
 
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                console.warn(`[WhatsApp] Connection closed for ${businessId}. Status: ${statusCode || 'unknown'}. Reconnect: ${shouldReconnect}`);
+                console.warn(`[WhatsApp] Close [${businessId}] Status: ${statusCode || 'unknown'}, UnstableCount: ${session.unstableCount || 0}, Conflict: ${isConflict}`);
 
-                if (shouldReconnect) {
-                    const sessionState = clients[businessId] || { reconnectAttempts: 0 };
+                if (isLoggedOut) {
+                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Wiping session.`);
+                    delete clients[businessId];
+                    initializing.delete(businessId);
+                    deleteSessionFolder(businessId);
+                    await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
+                    return;
+                }
 
-                    // Clear stability timer if it was running
-                    if (sessionState.stableTimer) clearTimeout(sessionState.stableTimer);
-
-                    const nextAttempts = (sessionState.reconnectAttempts || 0) + 1;
-
-                    // Persist attempts to DB so restart doesn't reset backoff
-                    await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: nextAttempts } });
-
-                    // ABSOLUTE ZERO-WIPE: No longer resetting keys on 440.
-                    // Just log it and rely on the Master Lock to eventually resolve the conflict.
-                } else if (statusCode === 440) {
-                    console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Allowing Master Lock and Reconnect Guards to resolve...`);
-                    // Note: We don't start a new timer here; we rely on the 10s heartbeat and 90s lock
-                    // to naturally resolve which process is master.
-
-                    // CRITICAL FIX: Infinite Retry for 440 Conflicts
-                    // If we are fighting for control (440), we must NOT give up.
-                    // The "other" session will eventually timeout or be killed by fuser.
-                    if (!isConflict && nextAttempts >= 10) {
-                        console.error(`[WhatsApp] Max reconnect attempts (10) reached for ${businessId}. Stopping retry loop.`);
+                // 🕵️ STABILITY TRACKER: detecting "Death Loops"
+                if (!isConflict) {
+                    session.unstableCount = (session.unstableCount || 0) + 1;
+                    if (session.unstableCount >= 5) {
+                        console.error(`[WhatsApp] 💀 Session ${businessId} in DEATH LOOP (5 rapid disconnects). Forcing wipe.`);
                         delete clients[businessId];
                         initializing.delete(businessId);
+                        deleteSessionFolder(businessId);
                         await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
                         return;
                     }
+                }
 
-                    const baseDelay = isConflict ? 15000 : 2000; // 15s delay for conflicts
-                    const backoff = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
+                const nextAttempts = (session.reconnectAttempts || 0) + 1;
+                session.reconnectAttempts = nextAttempts;
+                await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: nextAttempts } });
 
-                    // 🚀 ADD JITTER: Prevent "Thundering Herd" or synchronized retry loops
-                    const jitter = Math.random() * 5000;
-                    const delay = backoff + jitter;
-
-                    console.log(`[WhatsApp] Retrying ${businessId} in ${(delay / 1000).toFixed(1)}s (inc. ${(jitter / 1000).toFixed(1)}s jitter)... (Attempt: ${nextAttempts}${isConflict ? ' - CONFLICT LOOP' : '/10'})`);
-
-                    clients[businessId] = {
-                        ...sessionState,
-                        status: "disconnected",
-                        reconnectAttempts: nextAttempts
-                    };
-
-                    initializing.delete(businessId);
-
-                    // 🛡️ RETRY GUARD: Prevent multiple overlapping reconnect timers
-                    if (!clients[businessId]?.retryActive) {
-                        if (clients[businessId]) clients[businessId].retryActive = true;
-
-                        setTimeout(() => {
-                            if (clients[businessId]) clients[businessId].retryActive = false;
-                            console.log(`[WhatsApp] Retry timer fired for ${businessId}. Initializing...`);
-                            initializeClient(businessId);
-                        }, delay);
-                    } else {
-                        console.log(`[WhatsApp] Reconnect timer already active for ${businessId}, ignoring duplicate.`);
-                    }
-                } else {
-                    console.error(`[WhatsApp] Permanent logout for ${businessId}. Wiping session to allow fresh QR.`);
+                if (isConflict) {
+                    console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Allowing Master Lock to resolve...`);
+                } else if (nextAttempts >= 10) {
+                    console.error(`[WhatsApp] Max reconnect attempts (10) reached for ${businessId}. Stopping retry loop.`);
                     delete clients[businessId];
                     initializing.delete(businessId);
-
-                    // CRITICAL: Wipe the broken session from DB
-                    deleteSessionFolder(businessId);
-
                     await Business.findByIdAndUpdate(businessId, { sessionStatus: "disconnected" });
+                    return;
+                }
 
-                    // 🛡️ THROTTLE: Only log auth failure activity once every 10 mins
-                    const tenMins = 10 * 60 * 1000;
-                    if (!session.lastErrorLog || (Date.now() - session.lastErrorLog) > tenMins) {
-                        session.lastErrorLog = Date.now();
-                        await Activity.create({
-                            businessId,
-                            event: 'auth_failure',
-                            details: 'Session logged out from phone or credentials expired.'
-                        });
-                    }
+                const baseDelay = isConflict ? 15000 : 2000;
+                const backoff = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
+                const delay = backoff + (Math.random() * 5000);
+
+                console.log(`[WhatsApp] Retrying ${businessId} in ${(delay / 1000).toFixed(1)}s (Attempt: ${nextAttempts}${isConflict ? ' - CONFLICT LOOP' : ''})`);
+
+                session.status = "disconnected";
+                initializing.delete(businessId);
+
+                if (!session.retryActive) {
+                    session.retryActive = true;
+                    setTimeout(() => {
+                        session.retryActive = false;
+                        console.log(`[WhatsApp] Retry timer fired for ${businessId}. Re-initializing...`);
+                        initializeClient(businessId);
+                    }, delay);
                 }
             }
         });
