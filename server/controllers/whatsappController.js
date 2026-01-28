@@ -621,6 +621,7 @@ export const initializeClient = async (businessId) => {
                 session.stableTimer = setTimeout(async () => {
                     console.log(`[WhatsApp] [STABLE] Session ${businessId} has stayed open for 5s. Resetting backoff.`);
                     session.reconnectAttempts = 0;
+                    session.unstableCount = 0; // Reset instability counter
                     try {
                         await SessionStore.updateOne({ businessId }, { $set: { reconnectAttempts: 0 } });
                     } catch (e) { }
