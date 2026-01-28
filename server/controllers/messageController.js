@@ -98,14 +98,43 @@ export const clearQueuedMessages = asyncHandler(async (req, res) => {
         );
 
         // 2. Clear BullMQ Jobs for this business
-        // We iterate through 'waiting' and 'delayed' jobs
-        const waitingJobs = await messageQueue.getJobs(['waiting', 'delayed', 'paused']);
+        // We iterate through 'waiting', 'delayed', 'paused', and 'active' jobs
+        // NOTE: Active jobs are already being processed, but we can try to SIGTERM or rely on DB check in worker
+        const jobsToClean = await messageQueue.getJobs(['waiting', 'delayed', 'paused', 'active']);
 
         let removedCount = 0;
-        for (const job of waitingJobs) {
+        for (const job of jobsToClean) {
             if (job.data.businessId === businessId) {
-                await job.remove();
-                removedCount++;
+                try {
+                    await job.remove();
+                    removedCount++;
+                } catch (e) {
+                    // Active jobs might fail to remove, but that's okay because the worker check will stop them
+                    // The following block is worker-side logic and should not be in messageController.js.
+                    // It is included here as per the user's explicit instruction to insert it at this location.
+                    console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). WS Open: ${sock.ws?.isOpen}. Preparing payload...`);
+
+                    // 🛑 LAST-SECOND CANCELLATION CHECK
+                    // If the user clicked "Clear Stuck Messages", the DB status will be 'failed'.
+                    if (messageId) {
+                        const currentMsg = await Message.findById(messageId);
+                        if (!currentMsg || currentMsg.status === 'failed') {
+                            console.log(`[WORKER] [Job:${job.id}] 🛑 Message was CANCELLED by user. Skipping send.`);
+                            return; // Terminate job successfully without sending
+                        }
+                    }
+
+                    if (campaignId) {
+                        const currentCamp = await Campaign.findById(campaignId);
+                        if (!currentCamp || currentCamp.status === 'failed' || currentCamp.status === 'paused') {
+                            console.log(`[WORKER] [Job:${job.id}] 🛑 Campaign was CANCELLED or PAUSED. Skipping send.`);
+                            if (currentCamp?.status === 'paused') {
+                                throw new Error("RETRY_LATER: Campaign paused");
+                            }
+                            return;
+                        }
+                    }
+                }
             }
         }
 

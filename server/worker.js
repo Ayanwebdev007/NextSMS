@@ -170,6 +170,27 @@ export const startWorker = async () => {
 
                 console.log(`[WORKER] [Job:${job.id}] Session verified (User: ${sock.user.id}). WS Open: ${sock.ws?.isOpen}. Preparing payload...`);
 
+                // 🛑 LAST-SECOND CANCELLATION CHECK
+                // If the user clicked "Clear Stuck Messages", the DB status will be 'failed'.
+                if (messageId) {
+                    const currentMsg = await Message.findById(messageId).select('status');
+                    if (!currentMsg || currentMsg.status === 'failed') {
+                        console.log(`[WORKER] [Job:${job.id}] 🛑 Message was CANCELLED by user. Skipping send.`);
+                        return; // Terminate job successfully without sending
+                    }
+                }
+
+                if (campaignId) {
+                    const currentCamp = await Campaign.findById(campaignId).select('status');
+                    if (!currentCamp || currentCamp.status === 'failed' || currentCamp.status === 'paused') {
+                        console.log(`[WORKER] [Job:${job.id}] 🛑 Campaign was CANCELLED or PAUSED. Skipping send.`);
+                        if (currentCamp?.status === 'paused') {
+                            throw new Error("RETRY_LATER: Campaign paused");
+                        }
+                        return;
+                    }
+                }
+
                 // 🔗 Variable Replacement Logic
                 let processedText = text;
                 if (variables && typeof variables === 'object') {
