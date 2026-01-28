@@ -188,9 +188,9 @@ const useMongoDBAuthState = async (businessId) => {
                             if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
 
                             // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions to prevent DB bloat
-                            // If we have more than 200 items of a certain type, keep only the latest 50
+                            // If we have more than 300 items of a certain type, keep latest 100
                             const currentKeys = Object.keys(keyCache[businessId][type]);
-                            if (currentKeys.length > 200 && (type === 'pre-key' || type === 'session' || type === 'app-state-sync-key-share')) {
+                            if (currentKeys.length > 300 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
                                 console.log(`[JANITOR] Pruning ${type} for ${businessId} (${currentKeys.length} items)...`);
                                 const keysToRemove = currentKeys.slice(0, currentKeys.length - 100);
                                 for (const k of keysToRemove) {
@@ -517,7 +517,20 @@ export const initializeClient = async (businessId) => {
 
         const sock = makeWASocket({
             auth: state,
-            logger: pino({ level: "silent" }),
+            // 🛡️ NOISE CANCELING LOGGER: Suppress the constant "Bad MAC" / Decryption errors
+            // that don't affect sending but clutter logs.
+            logger: pino({
+                level: "error", // Only show actual crashes
+                hooks: {
+                    logMethod(inputArgs, method) {
+                        const msg = inputArgs[0];
+                        if (typeof msg === 'string' && (msg.includes('Bad MAC') || msg.includes('Failed to decrypt'))) {
+                            return; // Silently drop decryption noise
+                        }
+                        method.apply(this, inputArgs);
+                    }
+                }
+            }),
             browser: Browsers.ubuntu("Chrome"), // Matches existing session
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 60000,
