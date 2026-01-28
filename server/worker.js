@@ -464,13 +464,13 @@ export const startWorker = async () => {
         },
         {
             connection,
-            concurrency: 5,  // SCALABILITY: Allow 5 parallel jobs for multi-client support
+            concurrency: 50,  // UNHINGED: Allow many parallel jobs so anti-ban sleeps don't block
             lockDuration: 300000, // INCREASED: 5 minutes (Ensures worker doesn't lose lock during slow sends)
             stalledInterval: 120000, // INCREASED: 2m (Avoids premature stalled checks)
             maxStalledCount: 1,
             drainDelay: 1000, // REDUCED: 1s (was 30s) - Checks for jobs more frequently when empty
             limiter: {
-                max: 50,      // Max 50 messages per client
+                max: 100,      // INCREASED: 100 messages per client per minute
                 duration: 60000,  // per minute
                 groupKey: 'businessId' // SCALABILITY: Limits apply per business, not globally
             },

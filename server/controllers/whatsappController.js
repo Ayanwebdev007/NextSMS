@@ -23,6 +23,7 @@ redis.on("connect", () => console.log("[REDIS] Connected for Session Caching"));
 export const clients = {}; // { businessId: { sock, qr, status, reconnectAttempts, stableTimer, qrTimer, qrAttempt, lastActivity } }
 const initializing = new Set();
 const keyCache = {}; // { businessId: { type: { id: data } } }
+const saveQueues = {}; // { businessId: Promise } - Sequential save queue
 
 // 🧹 CACHE CLEANUP: Prevent memory bloat by clearing inactive key caches every hour
 setInterval(() => {
@@ -59,7 +60,7 @@ setInterval(async () => {
     } catch (err) {
         console.error(`[HEARTBEAT] Failed to update locks:`, err.message);
     }
-}, 10000); // 10s heartbeat (Faster for reliability)
+}, 10000); // 10s heartbeat (Faster for reliability, SYNC with 90s timeout)
 
 /* =======================
    AUTH PATH
@@ -93,39 +94,38 @@ const useMongoDBAuthState = async (businessId) => {
         creds = initAuthCreds();
     }
 
-    // 2. Save Function (Accepts partial updates)
-    // 🛡️ Atomic Write Guard: Prevent concurrent writes from corrupting session
-    let isSaving = false;
+    // 2. Save Function (Accepts strictly sequential updates)
+    // 🛡️ Sequential Write Guard: Ensure database writes are atomic and ordered
     const saveCreds = async (update) => {
-        if (isSaving) return; // Skip if a save is already in progress
-        isSaving = true;
+        if (!saveQueues[businessId]) saveQueues[businessId] = Promise.resolve();
 
-        try {
-            if (update && typeof update === 'object') {
-                Object.assign(creds, update);
+        // Chain the save operation to the business's unique queue
+        saveQueues[businessId] = saveQueues[businessId].then(async () => {
+            try {
+                if (update && typeof update === 'object') {
+                    Object.assign(creds, update);
+                }
+
+                await SessionStore.findOneAndUpdate(
+                    { businessId: businessId },
+                    {
+                        $set: {
+                            "data.creds": JSON.parse(JSON.stringify(creds, BufferJSON.replacer))
+                        }
+                    },
+                    { upsert: true, new: true }
+                );
+
+                // Guard: Don't log success if we are disconnecting (prevents race confusion)
+                if (!(clients[businessId]?.manualCleanup || clients[businessId]?.manualDisconnect)) {
+                    console.log(`[AUTH] Credentials saved for ${businessId} (Sequential)`);
+                }
+            } catch (err) {
+                console.error(`[AUTH] Failed sequential save for ${businessId}:`, err.message);
             }
+        });
 
-            const result = await SessionStore.findOneAndUpdate(
-                { businessId: businessId },
-                {
-                    $set: {
-                        "data.creds": JSON.parse(JSON.stringify(creds, BufferJSON.replacer))
-                    }
-                },
-                { upsert: true, new: true }
-            );
-
-            // Guard: Don't log success if we are disconnecting (prevents race confusion)
-            if (!(clients[businessId]?.manualCleanup || clients[businessId]?.manualDisconnect)) {
-                console.log(`[AUTH] Credentials saved for ${businessId}`);
-            }
-            return result;
-        } catch (err) {
-            console.error(`[AUTH] Failed to save credentials for ${businessId}:`, err.message);
-            throw err;
-        } finally {
-            isSaving = false;
-        }
+        return saveQueues[businessId];
     };
 
     return {
@@ -205,9 +205,14 @@ const useMongoDBAuthState = async (businessId) => {
                                 return;
                             }
 
-                            // Update MongoDB (Persistent) - Background
-                            SessionStore.updateOne({ businessId }, operations, { upsert: true }).catch(err => {
-                                console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
+                            // 🛡️ Sequential Sync: Reuse the save queue for key updates to prevent corruption
+                            if (!saveQueues[businessId]) saveQueues[businessId] = Promise.resolve();
+                            saveQueues[businessId] = saveQueues[businessId].then(async () => {
+                                try {
+                                    await SessionStore.updateOne({ businessId }, operations, { upsert: true });
+                                } catch (err) {
+                                    console.error(`[AUTH] Background key save failed for ${businessId}:`, err.message);
+                                }
                             });
                         }
                     } catch (err) {
