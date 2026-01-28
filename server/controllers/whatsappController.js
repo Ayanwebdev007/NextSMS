@@ -49,7 +49,11 @@ console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
  * every 15 seconds for all active sessions in memory.
  */
 setInterval(async () => {
-    const activeIds = Object.keys(clients).filter(id => clients[id]?.status === 'ready');
+    // STRAYED CHANGE: Include qr_pending, connecting, etc. to prevent lock expiration during slow sync
+    const activeIds = Object.keys(clients).filter(id => {
+        const status = clients[id]?.status;
+        return status === 'ready' || status === 'qr_pending' || status === 'connecting' || !!clients[id]?.sock;
+    });
     if (activeIds.length === 0) return;
 
     try {
@@ -665,10 +669,10 @@ export const initializeClient = async (businessId) => {
 
                     // ABSOLUTE ZERO-WIPE: No longer resetting keys on 440.
                     // Just log it and rely on the Master Lock to eventually resolve the conflict.
-                    const isConflict = statusCode === 440;
-                    if (isConflict) {
-                        console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Waiting 15s to let other instance die...`);
-                    }
+                } else if (statusCode === 440) {
+                    console.warn(`[WhatsApp] [${INSTANCE_ID}] 440 Conflict for ${businessId}. Allowing Master Lock and Reconnect Guards to resolve...`);
+                    // Note: We don't start a new timer here; we rely on the 10s heartbeat and 90s lock
+                    // to naturally resolve which process is master.
 
                     // CRITICAL FIX: Infinite Retry for 440 Conflicts
                     // If we are fighting for control (440), we must NOT give up.
@@ -740,7 +744,9 @@ export const initializeClient = async (businessId) => {
 
             // 📊 Update activity for idle timeout
             if (clients[businessId]) {
+                clients[businessId].lastActivity = Date.now();
                 clients[businessId].lastMessageAt = new Date();
+                clients[businessId].badMacCount = 0; // Reset error count on success
             }
 
             for (const msg of messages) {
