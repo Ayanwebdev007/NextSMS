@@ -29,16 +29,16 @@ let takeoverMutex = Promise.resolve(); // 🔒 Global Mutex for same-host takeov
 // 🛡️ GLOBAL NOISE SILENCER: Catch Baileys/libsignal errors that leak into console
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
-const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed'];
+const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError'];
 
 console.error = (...args) => {
-    const msg = args.join(' ');
+    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
     if (SILENCE_PATTERNS.some(p => msg.includes(p))) return;
     originalConsoleError.apply(console, args);
 };
 
 console.warn = (...args) => {
-    const msg = args.join(' ');
+    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
     if (SILENCE_PATTERNS.some(p => msg.includes(p))) return;
     originalConsoleWarn.apply(console, args);
 };
@@ -369,17 +369,29 @@ const acquireMasterLock = async (businessId) => {
                     const freshMaster = await SessionStore.findOne({ businessId });
                     if (freshMaster?.masterId === INSTANCE_ID) return true;
 
+                    let wasAlive = false;
                     try {
                         const ghostPid = currentMaster.masterId.split('-').pop();
                         if (ghostPid && !isNaN(ghostPid)) {
-                            const { exec } = await import('child_process');
-                            console.log(`[LOCK] 💀 Executing TARGETED KILL on zombie PID: ${ghostPid}`);
-                            exec(`kill -9 ${ghostPid}`, () => { }); // Fire and forget
+                            const { execSync } = await import('child_process');
+                            console.log(`[LOCK] 💀 Checking/Killing zombie PID: ${ghostPid}`);
+                            try {
+                                process.kill(parseInt(ghostPid), 0); // Check if alive
+                                wasAlive = true;
+                                execSync(`kill -9 ${ghostPid}`);
+                                console.log(`[LOCK] Zombie ${ghostPid} eliminated.`);
+                            } catch (e) {
+                                // Already dead
+                            }
                         }
                     } catch (kErr) { }
 
-                    // PATIENCE GUARD: Wait for VPC to release resources
-                    await new Promise(r => setTimeout(r, 5000));
+                    // 🛡️ CONDITIONAL WAIT: Only wait 5s if the process was actually alive
+                    // This prevents "Wait Storms" when processes are already dead.
+                    if (wasAlive) {
+                        console.warn(`[LOCK] Waiting 5s for VPC to release resources for ${businessId}...`);
+                        await new Promise(r => setTimeout(r, 5000));
+                    }
 
                     const finalResult = await SessionStore.findOneAndUpdate(
                         { businessId },
@@ -387,7 +399,6 @@ const acquireMasterLock = async (businessId) => {
                         { new: true }
                     );
 
-                    console.log(`[LOCK] Takeover complete for ${businessId}. Success: ${finalResult?.masterId === INSTANCE_ID}`);
                     return finalResult?.masterId === INSTANCE_ID;
                 });
             }
@@ -542,14 +553,14 @@ export const initializeClient = async (businessId) => {
                 level: "error",
                 hooks: {
                     logMethod(inputArgs, method) {
-                        const msg = JSON.stringify(inputArgs[0]);
-                        if (msg.includes('Bad MAC') || msg.includes('decrypt') || msg.includes('SessionError') || msg.includes('PreKeyError')) {
+                        // Aggressively silence decryption/session noise objects
+                        const content = JSON.stringify(inputArgs[0]);
+                        if (SILENCE_PATTERNS.some(p => content.includes(p))) {
                             return; // Total silence for decryption issues
                         }
                         method.apply(this, inputArgs);
                     }
                 },
-                // Force child loggers (internal Baileys) to also Be silent
                 base: null,
                 timestamp: false
             }),
