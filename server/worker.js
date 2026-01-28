@@ -128,6 +128,7 @@ export const startWorker = async () => {
 
                                 if (clientData?.status === "ready") {
                                     console.log(`[WORKER] [Job:${job.id}] ✅ Self-healing successful! Resuming...`);
+                                    return; // RE-RUN: The job will be picked up again immediately and process normally
                                 } else {
                                     throw new Error("RETRY_LATER: Healing in progress");
                                 }
@@ -138,6 +139,9 @@ export const startWorker = async () => {
                         }
 
                         // 3. Only fail if DB explicitly says disconnected AND we have no session in memory
+                        // Check one last time before giving up
+                        if (clients[businessId]?.status === "ready") return;
+
                         throw new Error(`WhatsApp not connected (Status: ${business?.sessionStatus || 'disconnected'})`);
                     }
                 }
@@ -465,8 +469,8 @@ export const startWorker = async () => {
         {
             connection,
             concurrency: 50,  // UNHINGED: Allow many parallel jobs so anti-ban sleeps don't block
-            lockDuration: 300000, // INCREASED: 5 minutes (Ensures worker doesn't lose lock during slow sends)
-            stalledInterval: 120000, // INCREASED: 2m (Avoids premature stalled checks)
+            lockDuration: 600000, // INCREASED: 10 minutes (Ensures worker doesn't lose lock during slow sends/history sync)
+            stalledInterval: 300000, // INCREASED: 5 minutes (Matches lock/healing duration)
             maxStalledCount: 1,
             drainDelay: 1000, // REDUCED: 1s (was 30s) - Checks for jobs more frequently when empty
             limiter: {
