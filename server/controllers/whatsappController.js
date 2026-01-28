@@ -524,10 +524,11 @@ export const initializeClient = async (businessId) => {
             defaultQueryTimeoutMs: 90000,
             keepAliveIntervalMs: 15000,
             retryRequestDelayMs: 5000,
-            // 🛡️ HIGH-VOLUME ISOLATION: Stop history sync for sending-only accounts
-            // This reduces CPU/RAM usage by 90% for active accounts like iconcomputer
-            syncFullHistory: false,
-            markOnlineOnConnect: false
+            // 🛡️ CONDITIONAL HISTORY SYNC:
+            // - NEW pairing (no existing creds): MUST sync to complete WhatsApp handshake
+            // - RECONNECTING (has creds): Skip sync to reduce CPU/RAM
+            syncFullHistory: !existingSession?.data?.creds,  // Only sync if it's a NEW pairing
+            markOnlineOnConnect: !existingSession?.data?.creds  // Only mark online for NEW pairing
         });
 
         // PRESERVE reconnectAttempts from memory or DB
