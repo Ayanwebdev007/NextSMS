@@ -461,8 +461,11 @@ setInterval(() => {
 ======================= */
 export const initializeClient = async (businessId) => {
     // SYNC GUARD: Prevent racing initializations
-    if (clients[businessId]?.status === "ready" || clients[businessId]?.sock) {
-        console.log(`[WhatsApp] Socket already exists for ${businessId}, skipping init.`);
+    // SYNC GUARD: Prevent racing initializations
+    // Only return if it's FULLY CONNECTED.
+    // If it's "disconnected" but has a socket object (failed retry), we MUST allow re-init to proceed.
+    if (clients[businessId]?.status === "ready") {
+        console.log(`[WhatsApp] Session ${businessId} is already ready, skipping init.`);
         initializing.delete(businessId);
         return;
     }
