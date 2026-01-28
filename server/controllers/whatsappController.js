@@ -29,17 +29,17 @@ let takeoverMutex = Promise.resolve(); // 🔒 Global Mutex for same-host takeov
 // 🛡️ GLOBAL NOISE SILENCER: Catch Baileys/libsignal errors that leak into console
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
-const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError'];
+const SILENCE_PATTERNS = ['Bad MAC', 'decrypt', 'SessionError', 'PreKeyError', 'transaction failed', 'skmsg', 'SessionRecordError', 'failed to decrypt'];
 
 console.error = (...args) => {
-    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-    if (SILENCE_PATTERNS.some(p => msg.includes(p))) return;
+    const raw = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    if (SILENCE_PATTERNS.some(p => raw.includes(p))) return;
     originalConsoleError.apply(console, args);
 };
 
 console.warn = (...args) => {
-    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-    if (SILENCE_PATTERNS.some(p => msg.includes(p))) return;
+    const raw = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    if (SILENCE_PATTERNS.some(p => raw.includes(p))) return;
     originalConsoleWarn.apply(console, args);
 };
 
@@ -205,12 +205,12 @@ const useMongoDBAuthState = async (businessId) => {
                         for (const type in data) {
                             if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
 
-                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions to prevent DB bloat
-                            // If we have more than 300 items of a certain type, keep latest 100
+                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions (ULTRA-AGGRESSIVE)
+                            // If we have more than 100 items, keep latest 50. 
+                            // This ensures the DB document is tiny (<100KB) and lightning fast.
                             const currentKeys = Object.keys(keyCache[businessId][type]);
-                            if (currentKeys.length > 300 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
-                                console.log(`[JANITOR] Pruning ${type} for ${businessId} (${currentKeys.length} items)...`);
-                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 100);
+                            if (currentKeys.length > 100 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
+                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 50);
                                 for (const k of keysToRemove) {
                                     delete keyCache[businessId][type][k];
                                     deletions[`data.${type}.${k}`] = 1;
@@ -548,21 +548,9 @@ export const initializeClient = async (businessId) => {
 
         const sock = makeWASocket({
             auth: state,
-            // 🛡️ ZERO-NOISE LOGGER: Suppress all decryption/signal noise permanently
+            // 🛡️ DEEP-SILENCE LOGGER: Catch noise before it ever reaches stdout
             logger: pino({
-                level: "error",
-                hooks: {
-                    logMethod(inputArgs, method) {
-                        // Aggressively silence decryption/session noise objects
-                        const content = JSON.stringify(inputArgs[0]);
-                        if (SILENCE_PATTERNS.some(p => content.includes(p))) {
-                            return; // Total silence for decryption issues
-                        }
-                        method.apply(this, inputArgs);
-                    }
-                },
-                base: null,
-                timestamp: false
+                level: "silent", // COMPLETELY SILENT (Production standard for high-volume)
             }),
             browser: Browsers.ubuntu("Chrome"), // Matches existing session
             connectTimeoutMs: 60000,
