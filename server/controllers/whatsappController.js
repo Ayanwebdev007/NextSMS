@@ -59,7 +59,7 @@ setInterval(async () => {
     } catch (err) {
         console.error(`[HEARTBEAT] Failed to update locks:`, err.message);
     }
-}, 15000); // 15s heartbeat
+}, 10000); // 10s heartbeat (Faster for reliability)
 
 /* =======================
    AUTH PATH
@@ -94,7 +94,12 @@ const useMongoDBAuthState = async (businessId) => {
     }
 
     // 2. Save Function (Accepts partial updates)
+    // 🛡️ Atomic Write Guard: Prevent concurrent writes from corrupting session
+    let isSaving = false;
     const saveCreds = async (update) => {
+        if (isSaving) return; // Skip if a save is already in progress
+        isSaving = true;
+
         try {
             if (update && typeof update === 'object') {
                 Object.assign(creds, update);
@@ -118,6 +123,8 @@ const useMongoDBAuthState = async (businessId) => {
         } catch (err) {
             console.error(`[AUTH] Failed to save credentials for ${businessId}:`, err.message);
             throw err;
+        } finally {
+            isSaving = false;
         }
     };
 
@@ -241,7 +248,7 @@ const cleanBrokenSession = async (businessId) => {
 const acquireMasterLock = async (businessId) => {
     try {
         const now = new Date();
-        const timeout = 30000; // 30 seconds takeover for stale locks
+        const timeout = 90000; // INCREASED: 90 seconds takeover for stale locks
 
         // 1. First, check if the session entry exists
         let session = await SessionStore.findOne({ businessId });
@@ -298,6 +305,9 @@ const acquireMasterLock = async (businessId) => {
         // 4. HIJACK LOGIC: If ownership is from the same host, take it forcefully
         const currentMaster = await SessionStore.findOne({ businessId });
         if (currentMaster?.masterId) {
+            // CRITICAL FIX: If WE are already the master, don't try to kill ourselves
+            if (currentMaster.masterId === INSTANCE_ID) return true;
+
             const [masterHostname] = currentMaster.masterId.split('-');
             const [myHostname] = INSTANCE_ID.split('-');
 

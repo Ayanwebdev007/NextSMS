@@ -73,9 +73,9 @@ export const startWorker = async () => {
                 if (sessionEntry && sessionEntry.masterId && sessionEntry.masterId !== INSTANCE_ID) {
                     // Check if the OTHER instance is stale before rejecting
                     const now = new Date();
-                    const timeout = 30000;
+                    const timeout = 90000; // SYNC WITH CONTROLLER: 90s
                     if (sessionEntry.lastHeartbeat && (now - sessionEntry.lastHeartbeat) > timeout) {
-                        console.warn(`[WORKER] [Job:${job.id}] Master ${sessionEntry.masterId} is STALE (>30s). Ignored. Proceeding to takeover...`);
+                        console.warn(`[WORKER] [Job:${job.id}] Master ${sessionEntry.masterId} is STALE (>90s). Ignored. Proceeding to takeover...`);
                         // Proceed (don't throw)
                     } else {
                         console.log(`[WORKER] [Job:${job.id}] Delaying - Managed by instance (${sessionEntry.masterId})`);
@@ -85,7 +85,7 @@ export const startWorker = async () => {
 
                 // 🕵️ EXTRA SAFETY: Double check heartbeats (Self-Staleness)
                 const now = new Date();
-                const timeout = 30000;
+                const timeout = 90000; // SYNC WITH CONTROLLER: 90s
                 if (sessionEntry && sessionEntry.lastHeartbeat && (now - sessionEntry.lastHeartbeat) > timeout) {
                     console.warn(`[WORKER] [Job:${job.id}] Master ${sessionEntry.masterId} is STALE. Proceeding to self-heal...`);
                     // Do NOT throw. Allow fall-through to trigger initializeClient.
@@ -97,10 +97,9 @@ export const startWorker = async () => {
                 if (!clientData || clientData.status !== "ready") {
                     console.log(`[WORKER] [Job:${job.id}] Session not ready (Status: ${clientData?.status || 'missing'}). Waiting...`);
 
-                    // OPTIMIZED WAIT: Wait up to 5 seconds (was 30s) for session to stabilize
-                    // If it takes longer, we should probably trigger a reload or retry later
-                    for (let i = 0; i < 10; i++) {
-                        await new Promise(r => setTimeout(r, 500)); // 500ms * 10 = 5s
+                    // OPTIMIZED WAIT: Snappy feedback for ready state
+                    for (let i = 0; i < 5; i++) {
+                        await new Promise(r => setTimeout(r, 400)); // 400ms * 5 = 2s
                         clientData = clients[businessId];
                         if (clientData?.status === "ready") break;
                     }
