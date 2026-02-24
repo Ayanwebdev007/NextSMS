@@ -511,6 +511,9 @@ export const initializeClient = async (businessId) => {
         return;
     }
 
+    // 📡 SYNC DB STATUS (Admin Dashboard visibility)
+    await Business.findByIdAndUpdate(businessId, { sessionStatus: 'initializing' });
+
     // Fetch persistent state
     const sessionEntry = await SessionStore.findOne({ businessId });
     const dbAttempts = sessionEntry?.reconnectAttempts || 0;

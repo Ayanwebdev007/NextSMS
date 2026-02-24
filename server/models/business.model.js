@@ -1,16 +1,16 @@
 import mongoose from 'mongoose';
 
 const businessSchema = new mongoose.Schema({
-    name: { 
-        type: String, 
-        required: true 
+    name: {
+        type: String,
+        required: true
     },
-    email: { 
-        type: String, 
-        required: true, 
-        unique: true, 
-        lowercase: true, 
-        trim: true 
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
     },
     googleId: { // For Google OAuth
         type: String,
@@ -18,9 +18,9 @@ const businessSchema = new mongoose.Schema({
         sparse: true // Allows null values to not violate uniqueness
     },
     password: { // Hashed password, not required if using Google login
-        type: String 
+        type: String
     },
-    
+
     // Plan & Subscription Details
     plan: {
         type: mongoose.Schema.Types.ObjectId,
@@ -36,12 +36,12 @@ const businessSchema = new mongoose.Schema({
         type: String,
         required: false
     },
-    credits: { 
-        type: Number, 
-        default: 0 
+    credits: {
+        type: Number,
+        default: 0
     },
-    planExpiry: { 
-        type: Date 
+    planExpiry: {
+        type: Date
     },
 
     // WhatsApp Session Details
@@ -54,17 +54,17 @@ const businessSchema = new mongoose.Schema({
     },
     sessionStatus: {
         type: String,
-        enum: ['disconnected', 'qr_pending', 'connected', 'error'],
+        enum: ['disconnected', 'qr_pending', 'connected', 'error', 'initializing'],
         default: 'disconnected'
     },
-    
+
     // Account Status
     status: {
         type: String,
         enum: ['active', 'inactive', 'suspended'],
         default: 'active'
     },
-     apiKey: {
+    apiKey: {
         type: String,
         unique: true,
         sparse: true // Ensures uniqueness but allows null/missing values
