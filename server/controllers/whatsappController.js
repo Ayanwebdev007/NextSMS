@@ -11,6 +11,7 @@ import os from "os";
 import { SessionStore } from "../models/sessionStore.model.js";
 import { BufferJSON } from "@whiskeysockets/baileys"; // Need BufferJSON to serialize/deserialize
 import Redis from "ioredis";
+import { SocksProxyAgent } from "socks-proxy-agent";
 
 const redis = new Redis(process.env.REDIS_URL || {
     host: process.env.REDIS_HOST || "127.0.0.1",
@@ -516,13 +517,14 @@ export const initializeClient = async (businessId) => {
     try {
         const { state, saveCreds } = await useMongoDBAuthState(businessId);
 
+        const agent = new SocksProxyAgent("socks5://127.0.0.1:40000");
+
         const sock = makeWASocket({
             auth: state,
+            agent, // 🛡️ Bypassing Meta IP Block via Cloudflare WARP
             // 🛡️ DEBUG LOGGER: Enabling info level to catch connection errors
-            logger: pino({
-                level: "info", // TEMPORARY DEBUGGING
-            }),
-            browser: ["NextSMS", "Chrome", "1.0.0"], // Custom browser string for better stability
+            version: [2, 3000, 1017531287], // Pinning stable version to avoid 405 protocol mismatch
+            browser: Browsers.macOS('Desktop'), // Use standard browser identity
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 90000,
             keepAliveIntervalMs: 15000,
