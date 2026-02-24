@@ -523,12 +523,12 @@ export const initializeClient = async (businessId) => {
         const sock = makeWASocket({
             auth: state,
             agent, // 🛡️ Bypassing Meta IP Block via Cloudflare WARP
-            // 🛡️ DEBUG LOGGER: Enabling info level to catch connection errors
-            browser: Browsers.macOS('Desktop'), // Use standard browser identity
-            connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 90000,
-            keepAliveIntervalMs: 15000,
-            retryRequestDelayMs: 5000
+            // 🛡️ STEALTH MODE: Using a more specific, high-entropy browser fingerprint
+            browser: ["Mac OS", "Chrome", "122.0.6261.129"],
+            connectTimeoutMs: 120000, // 2 minutes for slow proxy handshakes
+            defaultQueryTimeoutMs: 120000,
+            keepAliveIntervalMs: 20000,
+            retryRequestDelayMs: 10000, // Wait longer before retrying requests
             // Sync settings removed - using Baileys defaults for maximum compatibility
         });
 
@@ -724,9 +724,9 @@ export const initializeClient = async (businessId) => {
                     return;
                 }
 
-                const baseDelay = isConflict ? 15000 : 2000;
-                const backoff = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 60000);
-                const delay = backoff + (Math.random() * 5000);
+                const baseDelay = isConflict ? 30000 : 15000; // MUCH slower retry for proxy stability
+                const backoff = Math.min(Math.pow(2, Math.min(nextAttempts, 6)) * baseDelay, 120000);
+                const delay = backoff + (Math.random() * 15000);
 
                 console.log(`[WhatsApp] Retrying ${businessId} in ${(delay / 1000).toFixed(1)}s (Attempt: ${nextAttempts}${isConflict ? ' - CONFLICT LOOP' : ''})`);
 
