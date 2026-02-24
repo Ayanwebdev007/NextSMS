@@ -65,6 +65,7 @@ setInterval(() => {
 }, 60 * 60 * 1000); // Run every hour
 
 const INSTANCE_ID = `${os.hostname()}-${process.pid}`;
+const STARTUP_TIME = Date.now();
 const IDLE_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
 console.log(`[SYSTEM] Instance ID: ${INSTANCE_ID}`);
 
@@ -427,9 +428,9 @@ export const restoreSessions = async () => {
         // Use a staggered loop to avoid hitting Baileys with 100+ requests at once
         connectedBusinesses.forEach((biz, index) => {
             setTimeout(() => {
-                console.log(`[AUTO-RESTORE] Waking up session for ${biz.email || biz._id}...`);
+                console.log(`[AUTO-RESTORE] Waking up session for ${biz.email || biz._id} (${index + 1}/${connectedBusinesses.length})...`);
                 initializeClient(biz._id.toString());
-            }, index * 3000); // 3 seconds apart
+            }, index * 20000); // 20 seconds apart to avoid Proxy Rate Limits
         });
     } catch (err) {
         console.error('[STARTUP] Failed to restore sessions:', err.message);
@@ -794,7 +795,13 @@ export const initializeClient = async (businessId) => {
 export const connectSession = asyncHandler(async (req, res) => {
     const businessId = req.business._id.toString();
 
-    // Check if already connected
+    // 🛡️ NO RACE GUARD: Don't allow lazy-load to fight with auto-restorer in first 5 mins
+    const serverUptime = (Date.now() - STARTUP_TIME) / 1000;
+    if (serverUptime < 300 && !clients[businessId]) {
+        console.log(`[CONNECT] Skipping lazy-load for ${businessId} - Server is in startup staggered mode (${Math.round(serverUptime)}s uptime).`);
+        return res.json({ message: "Server is initializing sessions. Please wait 5 minutes.", status: 'staggered_init' });
+    }
+
     if (clients[businessId]) {
         if (clients[businessId].status === "ready") {
             return res.status(409).json({ message: "Session already connected" });
