@@ -112,6 +112,13 @@ export const updateBusinessCredits = asyncHandler(async (req, res) => {
 export const getBusinessActivity = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
+    // 0. Get Business Info
+    const business = await Business.findById(id);
+    if (!business) {
+        res.status(404);
+        throw new Error('Business not found');
+    }
+
     // 1. Get Campaign Stats
     const campaignsCount = await Campaign.countDocuments({ businessId: id });
 
