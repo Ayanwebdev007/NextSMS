@@ -158,12 +158,20 @@ export const getBusinessActivity = asyncHandler(async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(10);
 
+    // 2. Get Live WhatsApp Status
+    const client = clients[id];
+    let liveStatus = business.sessionStatus || 'disconnected';
+    if (client?.status === 'ready') liveStatus = 'connected';
+    else if (client?.qr) liveStatus = 'qr_pending';
+    else if (client || business.sessionStatus === 'initializing') liveStatus = 'initializing';
+
     res.status(200).json({
         stats: {
             campaignsCount,
             totalSent,
             totalFailed,
-            totalQueued
+            totalQueued,
+            liveStatus // Include live status in response
         },
         recentCampaigns,
         recentMessages,

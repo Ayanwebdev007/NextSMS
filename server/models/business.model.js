@@ -54,7 +54,7 @@ const businessSchema = new mongoose.Schema({
     },
     sessionStatus: {
         type: String,
-        enum: ['disconnected', 'qr_pending', 'connected', 'error', 'initializing'],
+        enum: ['disconnected', 'qr_pending', 'connected', 'error'],
         default: 'disconnected'
     },
 
