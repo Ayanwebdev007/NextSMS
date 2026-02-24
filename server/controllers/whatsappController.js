@@ -523,7 +523,6 @@ export const initializeClient = async (businessId) => {
             auth: state,
             agent, // 🛡️ Bypassing Meta IP Block via Cloudflare WARP
             // 🛡️ DEBUG LOGGER: Enabling info level to catch connection errors
-            version: [2, 3000, 1017531287], // Pinning stable version to avoid 405 protocol mismatch
             browser: Browsers.macOS('Desktop'), // Use standard browser identity
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 90000,

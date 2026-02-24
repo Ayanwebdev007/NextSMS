@@ -28,8 +28,9 @@ export const getAllBusinesses = asyncHandler(async (req, res) => {
             waStatus = 'qr_pending';
         } else if (client || busObj.sessionStatus === 'initializing') {
             waStatus = 'initializing';
-        } else if (waStatus === 'qr_pending' || waStatus === 'initializing') {
-            // 🔥 SELF-HEALING: Status is stuck in DB but not in memory
+        } else if ((waStatus === 'qr_pending' || waStatus === 'initializing') &&
+            (Date.now() - new Date(busObj.updatedAt).getTime() > 120000)) { // 2 minute grace period
+            // 🔥 SELF-HEALING: Only reset if stuck for more than 2 minutes
             console.log(`[SELF-HEALING] Resetting stuck status for ${busObj._id} (${waStatus} -> disconnected)`);
             waStatus = 'disconnected';
             await Business.updateOne({ _id: b._id }, { sessionStatus: 'disconnected', qrAttempt: 0 });
