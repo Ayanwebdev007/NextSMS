@@ -172,17 +172,17 @@ const ManageBusinessesPage = () => {
                     </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${business.waStatus === "connected" ? "bg-green-500/10 text-green-400" :
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${(business.waStatus === "connected" || business.sessionStatus === "connected") ? "bg-green-500/10 text-green-400" :
                       business.waStatus === "qr_pending" ? "bg-yellow-500/10 text-yellow-400" :
-                        business.waStatus === "initializing" ? "bg-cyan-500/10 text-cyan-400" :
+                        (business.waStatus === "initializing" || business.sessionStatus === "initializing") ? "bg-cyan-500/10 text-cyan-400" :
                           "bg-neutral-800 text-neutral-500"
                       }`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${business.waStatus === "connected" ? "bg-green-400 animate-pulse" :
+                      <div className={`w-1.5 h-1.5 rounded-full ${(business.waStatus === "connected" || business.sessionStatus === "connected") ? "bg-green-400 animate-pulse" :
                         business.waStatus === "qr_pending" ? "bg-yellow-400" :
-                          business.waStatus === "initializing" ? "bg-cyan-400 animate-spin" :
+                          (business.waStatus === "initializing" || business.sessionStatus === "initializing") ? "bg-cyan-400 animate-spin" :
                             "bg-neutral-600"
                         }`}></div>
-                      {business.waStatus.replace('_', ' ')}
+                      {(business.waStatus || business.sessionStatus || 'disconnected').replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-cyan-400 font-bold">{business.credits}</td>
@@ -212,7 +212,7 @@ const ManageBusinessesPage = () => {
                           <BarChart3 size={16} className="text-yellow-400" />
                           Business Activity
                         </button>
-                        {business.waStatus !== 'disconnected' && (
+                        {(business.waStatus === 'connected' || business.sessionStatus === 'connected') && (
                           <button
                             onClick={() => handleAdminDisconnect(business)}
                             className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-neutral-800 hover:text-red-300 transition-colors border-t border-neutral-800 mt-1"
@@ -460,9 +460,9 @@ const ManageBusinessesPage = () => {
                   {activeTab === "connectivity" && (
                     <div className="space-y-6">
                       <div className="flex items-center gap-2 mb-4">
-                        <div className={`w-3 h-3 rounded-full animate-pulse ${selectedBusiness?.sessionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <div className={`w-3 h-3 rounded-full animate-pulse ${(activityData.stats.liveStatus === 'connected') ? 'bg-green-500' : (activityData.stats.liveStatus === 'initializing') ? 'bg-cyan-500' : 'bg-red-500'}`}></div>
                         <p className="text-sm font-bold text-white uppercase tracking-wider">
-                          Live Status: {selectedBusiness?.sessionStatus}
+                          Live Status: {activityData.stats.liveStatus || 'disconnected'}
                         </p>
                       </div>
 
