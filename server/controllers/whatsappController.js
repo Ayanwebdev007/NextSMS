@@ -1,4 +1,4 @@
-import { default as makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } from "@whiskeysockets/baileys";
+import { default as makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import pino from "pino";
 
 import asyncHandler from "express-async-handler";
@@ -518,17 +518,21 @@ export const initializeClient = async (businessId) => {
     try {
         const { state, saveCreds } = await useMongoDBAuthState(businessId);
 
-        const agent = new SocksProxyAgent("socks5://127.0.0.1:40000");
+        // 🛡️ PROTOCOL VERSION: Use latest to avoid 405 blocks
+        const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1017531287] }));
+        console.log(`[WhatsApp] Initializing ${businessId} with WA version ${version.join('.')}`);
+
+        const agent = new SocksProxyAgent("socks5h://127.0.0.1:40000");
 
         const sock = makeWASocket({
             auth: state,
-            agent, // 🛡️ Bypassing Meta IP Block via Cloudflare WARP
-            // 🛡️ STEALTH MODE: Using a more specific, high-entropy browser fingerprint
-            browser: ["Mac OS", "Chrome", "122.0.6261.129"],
-            connectTimeoutMs: 120000, // 2 minutes for slow proxy handshakes
+            agent,
+            version,
+            browser: ["Mac OS", "Chrome", "122.0.6261.112"],
+            connectTimeoutMs: 120000,
             defaultQueryTimeoutMs: 120000,
             keepAliveIntervalMs: 20000,
-            retryRequestDelayMs: 10000, // Wait longer before retrying requests
+            retryRequestDelayMs: 10000,
             // Sync settings removed - using Baileys defaults for maximum compatibility
         });
 
