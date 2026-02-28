@@ -106,9 +106,14 @@ This document describes all API endpoints for the Next-SMS platform, grouped by 
 
 ## Business (`/api/business`)
 - **POST `/apikey`**  
-  Generate API key for business.  
+  Generate API key for business (returns existing if already set).  
   **Auth:** Bearer token  
   **Response:** `{ apiKey }`
+
+- **PUT `/apikey/regenerate`**  
+  Forcefully generate a NEW API key and invalidate the old one.  
+  **Auth:** Bearer token  
+  **Response:** `{ message, apiKey }`
 
 ---
 
