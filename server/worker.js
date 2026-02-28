@@ -445,13 +445,8 @@ export const startWorker = async () => {
                 throw error;
             }
 
-            // ⏱️ Anti-ban delay
-            const min = minDelay || 4000;
-            const max = maxDelay || 10000;
-            const delay = Math.floor(Math.random() * (max - min + 1)) + min;
-
-            console.log(`[WORKER] [Job:${job.id}] Delaying next action for ${delay}ms...`);
-            await new Promise((r) => setTimeout(r, delay));
+            // ⏱️ Anti-ban delay: REMOVED (Now handled by Scheduler in campaignController.js)
+            console.log(`[WORKER] [Job:${job.id}] Job completed immediately. Scheduler will handle gaps.`);
         },
         {
             connection,

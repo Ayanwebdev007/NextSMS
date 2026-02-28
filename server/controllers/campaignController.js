@@ -4,6 +4,7 @@ import { Business } from '../models/business.model.js';
 import { Message } from '../models/message.model.js';
 // The import path is correct for your project structure.
 import { messageQueue } from '../workers/queue.js';
+import { wakeWorker } from '../utils/workerManager.js';
 
 export const startCampaign = asyncHandler(async (req, res) => {
     // It correctly accepts the pre-calculated 'delay' from the frontend.
@@ -47,28 +48,42 @@ export const startCampaign = asyncHandler(async (req, res) => {
         console.log(`Campaign ${campaign._id} scheduled with a delay of ${delay}ms.`);
     }
 
+    let cumulativeDelay = delay > 0 ? delay : 0;
+    const minGap = minDelay || 4000;
+    const maxGap = maxDelay || 10000;
+
     console.log(`[QUEUE] Campaign ${campaign._id}: Adding ${recipients.length} jobs to nextsms_prod_v1...`);
     for (const item of recipients) {
-        // 'item' is now { phoneNumber, variables }
         try {
             await messageQueue.add(`send_${businessId.toString()}`, {
                 businessId: businessId.toString(),
                 campaignId: campaign._id.toString(),
                 recipient: item.phoneNumber,
-                variables: item.variables, // Pass variables to worker
+                variables: item.variables,
                 text: message,
                 filePath: filePath,
-                minDelay: minDelay || 4000, // Pass delay range to worker
-                maxDelay: maxDelay || 10000
+                minDelay: minGap,
+                maxDelay: maxGap
             }, {
                 ...jobOptions,
-                priority: 10 // 📉 LOW PRIORITY: Campaigns run in background
+                delay: cumulativeDelay, // ⏱️ SCHEDULER-BASED ANTI-BAN
+                priority: 10,         // 📉 LOW PRIORITY: Campaigns run in background
+                attempts: 3,
+                backoff: { type: 'fixed', delay: 30000 } // 30s retry for transient network issues
             });
+
+            // Calculate delay for next message (accumulates)
+            const nextGap = Math.floor(Math.random() * (maxGap - minGap + 1)) + minGap;
+            cumulativeDelay += nextGap;
+
         } catch (err) {
             console.error(`[QUEUE] ❌ Campaign ${campaign._id}: Failed to add job for ${item.phoneNumber}:`, err.message);
         }
     }
     console.log(`[QUEUE] ✅ Campaign ${campaign._id}: Injection finished.`);
+
+    // 🔥 Wake worker to process jobs immediately
+    wakeWorker();
 
     const responseMessage = campaignStatus === 'scheduled'
         ? 'Campaign has been successfully scheduled.'

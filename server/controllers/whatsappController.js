@@ -232,12 +232,12 @@ const useMongoDBAuthState = async (businessId) => {
                         for (const type in data) {
                             if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
 
-                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions (ULTRA-AGGRESSIVE)
-                            // If we have more than 100 items, keep latest 50. 
-                            // This ensures the DB document is tiny (<100KB) and lightning fast.
+                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions (CONSERVATIVE)
+                            // If we have more than 1000 items, keep latest 500. 
+                            // This ensures stability for active businesses while preventing infinite DB growth.
                             const currentKeys = Object.keys(keyCache[businessId][type]);
-                            if (currentKeys.length > 100 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
-                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 50);
+                            if (currentKeys.length > 1000 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
+                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 500);
                                 for (const k of keysToRemove) {
                                     delete keyCache[businessId][type][k];
                                     deletions[`data.${type}.${k}`] = 1;
@@ -686,6 +686,10 @@ export const initializeClient = async (businessId) => {
 
                 // 🔍 FULL ERROR LOGGING
                 if (lastDisconnect?.error) {
+                    const isPreKeyError = lastDisconnect.error.name === 'PreKeyError' || lastDisconnect.error.message?.includes('PreKey');
+                    if (isPreKeyError) {
+                        console.warn(`[WhatsApp] 🔑 PreKeyError for ${businessId}. This usually happens when encryption indices are out of sync. Re-init may be required.`);
+                    }
                     console.error(`[WhatsApp] 🛑 Detailed Error for ${businessId}:`, JSON.stringify(lastDisconnect.error, null, 2));
                     if (lastDisconnect.error.output) console.error(`[WhatsApp] Output Payload:`, JSON.stringify(lastDisconnect.error.output, null, 2));
                 }

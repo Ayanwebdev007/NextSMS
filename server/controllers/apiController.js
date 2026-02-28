@@ -94,6 +94,7 @@ export const sendSimpleMessage = asyncHandler(async (req, res) => {
             text: msgtext,
             mediaUrl: mediaUrl,
         }, {
+            priority: 1, // ⚡ HIGH PRIORITY: Individual messages cut the line
             attempts: 3,
             backoff: { type: 'exponential', delay: 5000 },
             removeOnComplete: 100,

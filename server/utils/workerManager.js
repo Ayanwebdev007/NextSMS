@@ -5,6 +5,8 @@
  * The worker sleeps after 15 minutes of inactivity and wakes on demand.
  */
 
+import { messageQueue } from '../workers/queue.js';
+
 let workerInstance = null;
 let workerState = 'sleeping'; // 'sleeping' | 'active'
 let lastActivity = Date.now();
@@ -65,12 +67,28 @@ export function getWorkerState() {
  * Monitor for inactivity and put worker to sleep
  */
 function startSleepMonitor() {
-    setInterval(() => {
+    setInterval(async () => {
         const idleTime = Date.now() - lastActivity;
 
         if (workerState === 'active' && idleTime > SLEEP_TIMEOUT) {
-            console.log(`[WORKER-MANAGER] No activity for ${Math.round(idleTime / 60000)} minutes. Entering sleep mode...`);
-            sleepWorker();
+            try {
+                // 🔥 CRITICAL: Check if there are still jobs pending or scheduled
+                // This prevents the "10-minute hang" where the worker sleeps while jobs are delayed
+                const counts = await messageQueue.getJobCounts('waiting', 'delayed');
+
+                if (counts.waiting > 0 || counts.delayed > 0) {
+                    console.log(`[WORKER-MANAGER] Queue has ${counts.waiting} waiting and ${counts.delayed} delayed jobs. Resetting idle timer.`);
+                    lastActivity = Date.now(); // Reset idle timer
+                    return;
+                }
+
+                console.log(`[WORKER-MANAGER] No activity for ${Math.round(idleTime / 60000)} minutes. Entering sleep mode...`);
+                sleepWorker();
+            } catch (err) {
+                console.error('[WORKER-MANAGER] Failed to check queue status:', err.message);
+                // On error, we err on the side of caution and DON'T sleep
+                lastActivity = Date.now();
+            }
         }
     }, 60000); // Check every minute
 }
