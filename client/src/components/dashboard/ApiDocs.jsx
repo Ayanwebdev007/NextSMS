@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, Check, Play, Loader2 } from 'lucide-react';
+import { Copy, Check, Play, Loader2, Wand2 } from 'lucide-react';
 import axios from 'axios';
 
 const CodeBlock = ({ code, language }) => {
@@ -83,6 +83,25 @@ else:
     });
     const [loading, setLoading] = useState(false);
     const [response, setResponse] = useState(null);
+    const [generatedUrl, setGeneratedUrl] = useState("");
+
+    const handleGenerateUrl = () => {
+        if (!sandboxData.receiver || !sandboxData.message) {
+            toast.error("Receiver and Message are required to generate a URL");
+            return;
+        }
+
+        const url = new URL(baseUrl);
+        url.searchParams.append("receiver", sandboxData.receiver.replace(/\s+/g, ''));
+        url.searchParams.append("msgtext", sandboxData.message);
+        if (sandboxData.mediaUrl) {
+            url.searchParams.append("mediaUrl", sandboxData.mediaUrl);
+        }
+        url.searchParams.append("token", apiKey);
+
+        setGeneratedUrl(url.toString());
+        toast.success("API URL generated!");
+    };
 
     const handleTestRequest = async () => {
         if (!sandboxData.receiver || !sandboxData.message) {
@@ -173,13 +192,42 @@ else:
                         Send Test Request
                     </button>
 
-                    {response && (
-                        <div className={`flex-1 w-full p-3 rounded-md text-xs font-mono overflow-x-auto ${response.success ? 'bg-green-900/20 border border-green-800/50 text-green-300' : 'bg-red-900/20 border border-red-800/50 text-red-300'}`}>
-                            <div><strong>Status:</strong> {response.status}</div>
-                            <div className="mt-1 whitespace-pre-wrap">{JSON.stringify(response.data, null, 2)}</div>
-                        </div>
-                    )}
+                    <button
+                        onClick={handleGenerateUrl}
+                        className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium rounded-md border border-neutral-700 transition-colors"
+                    >
+                        <Wand2 size={16} className="text-cyan-400" />
+                        Generate URL
+                    </button>
                 </div>
+
+                {generatedUrl && (
+                    <div className="mt-4">
+                        <label className="block text-xs font-medium text-neutral-400 mb-1">Generated API Link:</label>
+                        <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-md p-3 group relative">
+                            <code className="text-cyan-400 text-xs break-all flex-1">
+                                {generatedUrl}
+                            </code>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(generatedUrl);
+                                    toast.success("URL copied!");
+                                }}
+                                className="text-neutral-500 hover:text-white transition-colors"
+                                title="Copy URL"
+                            >
+                                <Copy size={16} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {response && (
+                    <div className={`flex-1 w-full p-3 rounded-md text-xs font-mono overflow-x-auto ${response.success ? 'bg-green-900/20 border border-green-800/50 text-green-300' : 'bg-red-900/20 border border-red-800/50 text-red-300'}`}>
+                        <div><strong>Status:</strong> {response.status}</div>
+                        <div className="mt-1 whitespace-pre-wrap">{JSON.stringify(response.data, null, 2)}</div>
+                    </div>
+                )}
             </div>
 
             {/* Endpoint Info */}
@@ -221,7 +269,7 @@ else:
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
