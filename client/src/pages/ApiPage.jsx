@@ -11,6 +11,7 @@ const ApiPage = () => {
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false); // State for the URL copy button
 
@@ -35,6 +36,50 @@ const ApiPage = () => {
       toast.error(errorMessage, { id: toastId });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleRegenerateKey = async () => {
+    // Show confirmation
+    toast((t) => (
+      <div className="flex flex-col gap-2">
+        <p className="font-semibold text-white">Regenerate API Key?</p>
+        <p className="text-xs text-neutral-400">This will instantly invalidate your current key. Any external apps using it will stop working.</p>
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+              processRegeneration();
+            }}
+            className="bg-red-500 text-white px-3 py-1 rounded text-sm font-bold"
+          >
+            Regenerate
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="bg-neutral-800 text-white px-3 py-1 rounded text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), { duration: 6000, style: { background: '#171717', border: '1px solid #404040' } });
+  };
+
+  const processRegeneration = async () => {
+    setIsRegenerating(true);
+    const toastId = toast.loading("Rotating API Key...");
+    const api = createAuthenticatedApi(token);
+    try {
+      const response = await api.put("/business/apikey/regenerate");
+      setApiKey(response.data.apiKey);
+      toast.success("Security: New API Key generated!", { id: toastId });
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to rotate API Key.";
+      toast.error(errorMessage, { id: toastId });
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -97,6 +142,16 @@ const ApiPage = () => {
                   )}
                 </button>
               </div>
+
+              <button
+                onClick={handleRegenerateKey}
+                disabled={isRegenerating}
+                className="mt-4 flex items-center gap-2 text-xs font-medium text-neutral-500 hover:text-red-400 transition-colors"
+                type="button"
+              >
+                <KeyRound size={14} />
+                {isRegenerating ? "Rotating..." : "Regenerate Key (Invalidates old one)"}
+              </button>
 
               {/* The Example URL display is now back in the UI */}
               <p className="text-sm text-neutral-400 mt-6">Example API URL:</p>
