@@ -117,22 +117,18 @@ const useMongoDBAuthState = async (businessId) => {
         // Deserialize existing session from DB
         console.log(`[AUTH] Restoring session from DB for ${businessId}`);
 
-        // 🛡️ NON-BLOCKING REPAIR: Surgically scrub bloat without freezing the VPS
-        // If it's iconcomputer or data seems present, we check one specific small key to verify existence
-        if (existingSession.businessEmail === "iconcomputer741126@gmail.com") {
-            // Check for bloating keys without stringifying the whole object
-            const keys = Object.keys(existingSession.data || {});
-            if (keys.length > 2) { // More than just 'creds' and maybe one other
-                console.warn(`[REPAIR] 🛠️  Business ${businessId} has extensive data. Executing Automatic Scrub...`);
-                await SessionStore.updateOne(
-                    { businessId },
-                    { $set: { "data.pre-key": {}, "data.session": {}, "data.sender-key": {}, "data.app-state-sync-key-share": {} } }
-                );
-                // Return just the creds from what we already have (no Fresh JSON needed)
-                creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
-            } else {
-                creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
-            }
+        // 🛡️ GENERIC BLOAT REPAIR: Surgically scrub bloat without freezing the VPS
+        // If the session data is too extensive, we clear non-essential keys
+        const dataKeys = Object.keys(existingSession.data || {});
+        const isBloated = dataKeys.length > 5 || (existingSession.businessEmail && ["iconcomputer741126@gmail.com", "prasenjitshaw68@gmail.com", "finotagrameenfinpvtltd.obs@gmail.com", "mdrafiquehabibirafique789@gmail.com"].includes(existingSession.businessEmail));
+
+        if (isBloated) {
+            console.warn(`[REPAIR] 🛠️  Business ${businessId} (${existingSession.businessEmail || 'N/A'}) has extensive data. Executing Automatic Scrub...`);
+            await SessionStore.updateOne(
+                { businessId },
+                { $set: { "data.pre-key": {}, "data.session": {}, "data.sender-key": {}, "data.app-state-sync-key-share": {} } }
+            );
+            creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
         } else {
             creds = JSON.parse(JSON.stringify(existingSession.data.creds), BufferJSON.reviver);
         }
@@ -232,12 +228,12 @@ const useMongoDBAuthState = async (businessId) => {
                         for (const type in data) {
                             if (!keyCache[businessId][type]) keyCache[businessId][type] = {};
 
-                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions (CONSERVATIVE)
-                            // If we have more than 1000 items, keep latest 500. 
-                            // This ensures stability for active businesses while preventing infinite DB growth.
+                            // 🧹 SESSION JANITOR: Prune excessive preKeys/sessions (AGGRESSIVE)
+                            // We strictly limit to 200 items in the DB to keep document size < 1MB
                             const currentKeys = Object.keys(keyCache[businessId][type]);
-                            if (currentKeys.length > 1000 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
-                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 500);
+                            if (currentKeys.length > 200 && (type === 'pre-key' || type === 'session' || type === 'sender-key')) {
+                                console.log(`[PRUNE] Reducing ${type} for ${businessId} from ${currentKeys.length} to 100`);
+                                const keysToRemove = currentKeys.slice(0, currentKeys.length - 100);
                                 for (const k of keysToRemove) {
                                     delete keyCache[businessId][type][k];
                                     deletions[`data.${type}.${k}`] = 1;
